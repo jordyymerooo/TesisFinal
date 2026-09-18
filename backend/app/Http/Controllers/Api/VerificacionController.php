@@ -111,6 +111,36 @@ class VerificacionController extends Controller
     }
 
     /**
+     * POST o PATCH /admin/verificaciones/{id}/aprobar
+     * Aprueba la verificación KYC del arrendador y envía el correo de confirmación.
+     */
+    public function aprobar(Request $request, string $id)
+    {
+        $usuario = \App\Models\User::findOrFail($id);
+
+        $perfil = \App\Models\Perfil::firstOrCreate(
+            ['id_usuario' => $usuario->id_usuario],
+            ['documento_verificado' => true]
+        );
+        $perfil->documento_verificado = true;
+        $perfil->save();
+
+        $usuario->update(['estado' => 'activo']);
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($usuario->correo)->send(new \App\Mail\ArrendadorAprobadoMail($usuario));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("No se pudo enviar correo a {$usuario->correo}: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'status'   => 'success',
+            'message'  => 'Arrendador aprobado exitosamente. Se ha enviado el correo de notificación.',
+            'usuario'  => $usuario->fresh(['rol', 'perfil']),
+        ]);
+    }
+
+    /**
      * DELETE — las verificaciones no se eliminan, quedan como registro histórico.
      */
     public function destroy(string $id)

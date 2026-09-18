@@ -87,21 +87,32 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
     },
     {
       id: 'doc-4',
-      tipo: 'exterior_inmueble',
-      titulo: 'Exterior Inmueble',
+      tipo: 'recibo_luz',
+      titulo: 'Recibo de Luz (Servicios Básicos)',
       badgeText:
-        selectedReview.exterior_url || selectedReview.exterior
-          ? 'Fachada Subida'
-          : 'Dirección Manta Validada',
+        selectedReview.recibo_luz_url ||
+        selectedReview.recibo_luz ||
+        selectedReview.exterior_url ||
+        selectedReview.exterior
+          ? 'Comprobante Subido'
+          : 'Verificación de Domicilio',
       badgeBg: '#EFF6FF',
       badgeColor: '#2563EB',
       src:
+        selectedReview.recibo_luz_url ||
+        selectedReview.recibo_luz ||
         selectedReview.exterior_url ||
         selectedReview.exterior ||
-        selectedReview.documentos?.find((d) => d.tipo === 'exterior_inmueble')?.previewUrl ||
+        selectedReview.documentos?.find((d) => d.tipo === 'recibo_luz' || d.tipo === 'exterior_inmueble')?.previewUrl ||
         PLACEHOLDER_IMG,
     },
   ];
+
+  const handleAprobar = (id?: number | string) => {
+    if (onApprove) {
+      onApprove(selectedReview);
+    }
+  };
 
   return (
     <div
@@ -459,7 +470,7 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
               </button>
 
               <button
-                onClick={() => onApprove(selectedReview)}
+                onClick={() => handleAprobar(selectedReview.usuario_id || selectedReview.id)}
                 disabled={approving}
                 style={{
                   display: 'flex',

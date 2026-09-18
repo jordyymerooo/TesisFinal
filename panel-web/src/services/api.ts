@@ -199,8 +199,11 @@ export interface LandlordVerification {
   cedula_posterior_url?: string;
   selfie?: string;
   selfie_url?: string;
+  recibo_luz?: string;
+  recibo_luz_url?: string;
   exterior?: string;
   exterior_url?: string;
+  usuario_id?: number;
 }
 
 /**
@@ -219,11 +222,17 @@ export const getPendingLandlords = async (): Promise<LandlordVerification[]> => 
 
 /**
  * Aprobar la verificación de identidad (KYC) de un arrendador
- * PATCH /api/v1/admin/arrendadores/{id}/aprobar
+ * PATCH /api/v1/admin/verificaciones/{id}/aprobar
  */
 export const approveLandlord = async (userId: number | string) => {
-  const res = await api.patch(`/admin/arrendadores/${userId}/aprobar`);
-  return res.data;
+  try {
+    const res = await api.patch(`/admin/verificaciones/${userId}/aprobar`);
+    return res.data;
+  } catch {
+    // Fallback a ruta de arrendadores
+    const res = await api.patch(`/admin/arrendadores/${userId}/aprobar`);
+    return res.data;
+  }
 };
 
 /**

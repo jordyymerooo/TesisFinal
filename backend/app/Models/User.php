@@ -25,6 +25,29 @@ class User extends Authenticatable implements MustVerifyEmail
         'email_verified_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'estado_kyc',
+    ];
+
+    /**
+     * Calcula dinámicamente el estado KYC para arrendadores.
+     * Retorna: 'aprobado' | 'en_revision' | 'pendiente_documentos' | null
+     */
+    public function getEstadoKycAttribute()
+    {
+        if ((int) $this->id_rol !== 2) {
+            return null;
+        }
+        $perfil = $this->relationLoaded('perfil') ? $this->perfil : $this->perfil()->first();
+        if ($perfil && $perfil->documento_verificado) {
+            return 'aprobado';
+        }
+        if ($perfil && (!empty($perfil->documento_url) || $perfil->documento_tipo === 'cedula')) {
+            return 'en_revision';
+        }
+        return 'pendiente_documentos';
+    }
+
     public function getAuthPassword()
     {
         return $this->clave_hash;

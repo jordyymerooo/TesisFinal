@@ -18,10 +18,11 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $data = $request->validate([
-            'nombres'  => ['required', 'string', 'max:150'],
-            'correo'   => ['required', 'email', 'max:150', 'unique:users,correo'],
-            'clave'    => ['required', 'confirmed', Password::min(8)],
-            'id_rol'   => ['required', 'integer', 'in:1,2'], // solo estudiante o arrendador
+            'nombres'        => ['required', 'string', 'max:150'],
+            'correo'         => ['required', 'email', 'max:150', 'unique:users,correo'],
+            'clave'          => ['required', 'confirmed', Password::min(8)],
+            'id_rol'         => ['required', 'integer', 'in:1,2'], // solo estudiante o arrendador
+            'identificacion' => ['nullable', 'string', 'max:20'],
         ]);
 
         // Validación de dominio institucional para estudiantes
@@ -46,7 +47,10 @@ class AuthController extends Controller
         ]);
 
         // Crear perfil automáticamente
-        $perfilData = ['id_usuario' => $user->id_usuario];
+        $perfilData = [
+            'id_usuario'     => $user->id_usuario,
+            'identificacion' => $request->input('identificacion'),
+        ];
 
         if ((int) $data['id_rol'] === 2) {
             // Arrendadores inician con documento_verificado = false (requiere aprobación admin)

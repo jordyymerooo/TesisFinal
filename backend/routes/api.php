@@ -15,8 +15,10 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RolController;
 use App\Http\Controllers\Api\SolicitudReservaController;
 use App\Http\Controllers\Api\UbicacionController;
+use App\Http\Controllers\Api\KYCController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -69,6 +71,23 @@ Route::prefix('v1/auth')->group(function () {
         Route::get('/me',      [AuthController::class, 'me'])->name('auth.me');
         Route::get('/user',    [AuthController::class, 'me'])->name('auth.user');
     });
+});
+
+// ─────────────────────────────────────────────
+// RUTAS SOLO CON LOGIN (Se permite subir KYC aunque no tenga el email verificado)
+// ─────────────────────────────────────────────
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::post('/kyc/documentos', [KYCController::class, 'upload']);
+    Route::get('/user', function (Request $request) { return $request->user()->load('rol', 'perfil'); });
+});
+
+Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
+    Route::post('/kyc/documentos', [KYCController::class, 'upload']);
+});
+
+// RUTAS ESTRICTAS (Email verificado + KYC aprobado)
+Route::middleware(['auth:sanctum', 'verified'])->group(function () {
+    Route::apiResource('inmuebles', InmuebleController::class);
 });
 
 // ─────────────────────────────────────────────
@@ -163,6 +182,9 @@ Route::prefix('v1/admin')->group(function () {
     Route::get('/pending-verifications', [AdminController::class, 'getPendingLandlords'])->name('admin.pending-verifications');
     Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification'])->name('admin.verificaciones.show');
     Route::patch('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord'])->name('admin.arrendadores.aprobar');
+    Route::post('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
+    Route::patch('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar'])->name('admin.verificaciones.aprobar');
+    Route::post('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
 
     // Auditoría de Mensajes y Conversaciones
     Route::get('/chats', [ChatController::class, 'adminIndex'])->name('admin.chats.index');
@@ -343,6 +365,10 @@ Route::prefix('admin')->group(function () {
 Route::post('/admin/usuarios', [UserController::class, 'storeAsAdmin']);
 Route::delete('/admin/usuarios/{id}', [UserController::class, 'destroy']);
 Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification']);
+Route::patch('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
+Route::post('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
+Route::patch('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
+Route::post('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
 
 // Endpoint móvil para listar notificaciones del usuario
 Route::get('/v1/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('v1.mis-notificaciones');

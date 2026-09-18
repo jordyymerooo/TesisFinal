@@ -10,8 +10,9 @@ class Perfil extends Model
     protected $primaryKey = 'id_perfil';
 
     protected $fillable = [
-        'id_usuario', 'telefono', 'foto_perfil_url', 'ciudad_origen',
+        'id_usuario', 'identificacion', 'telefono', 'foto_perfil_url', 'ciudad_origen',
         'documento_verificado', 'documento_tipo', 'documento_url',
+        'documento_posterior_url', 'recibo_luz_url',
     ];
 
     protected $casts = [

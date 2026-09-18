@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ArrendadorAprobadoMail;
 use App\Models\Inmueble;
 use App\Models\Perfil;
 use App\Models\SolicitudReserva;
@@ -10,6 +11,8 @@ use App\Models\User;
 use App\Models\Verificacion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class AdminController extends Controller
 {
@@ -82,7 +85,7 @@ class AdminController extends Controller
             $docFrontal = $resolveFullUrl($perfil?->documento_url, 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&w=600&q=80');
             $docPosterior = $resolveFullUrl($perfil?->documento_posterior_url ?? ($perfil?->documento_tipo === 'cedula_posterior' ? $perfil?->documento_url : null), 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80');
             $selfie = $resolveFullUrl($perfil?->foto_perfil_url, 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80');
-            $exterior = $resolveFullUrl($primerInmuebleFoto, 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80');
+            $reciboLuz = $resolveFullUrl($perfil?->recibo_luz_url ?? $primerInmuebleFoto, 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80');
 
             $documentos = [
                 [
@@ -98,7 +101,7 @@ class AdminController extends Controller
                     'id' => 'doc-2',
                     'tipo' => 'cedula_posterior',
                     'titulo' => 'Cédula Posterior',
-                    'badgeText' => 'Dactilar Verificado',
+                    'badgeText' => $perfil?->documento_posterior_url ? 'Documento Subido' : 'Dactilar Verificado',
                     'badgeBg' => '#ECFDF5',
                     'badgeColor' => '#059669',
                     'previewUrl' => $docPosterior,
@@ -114,18 +117,19 @@ class AdminController extends Controller
                 ],
                 [
                     'id' => 'doc-4',
-                    'tipo' => 'exterior_inmueble',
-                    'titulo' => 'Exterior Inmueble',
-                    'badgeText' => $primerInmuebleFoto ? 'Fachada del Inmueble' : 'Dirección Manta Validada',
+                    'tipo' => 'recibo_luz',
+                    'titulo' => 'Recibo de Luz (Servicios Básicos)',
+                    'badgeText' => $perfil?->recibo_luz_url ? 'Comprobante Subido' : 'Verificación de Domicilio',
                     'badgeBg' => '#EFF6FF',
                     'badgeColor' => '#2563EB',
-                    'previewUrl' => $exterior,
+                    'previewUrl' => $reciboLuz,
                 ],
             ];
 
-            $cedulaGenerada = $perfil?->telefono 
-                ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '12345678', 0, 8)
-                : '131' . str_pad((string)$user->id_usuario, 7, '0', STR_PAD_LEFT);
+            $cedulaGenerada = $perfil?->identificacion 
+                ?: ($perfil?->telefono 
+                    ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '12345678', 0, 8)
+                    : '131' . str_pad((string)$user->id_usuario, 7, '0', STR_PAD_LEFT));
 
             return [
                 'id'                   => $user->id_usuario,
@@ -144,8 +148,10 @@ class AdminController extends Controller
                 'cedula_posterior_url' => $docPosterior,
                 'selfie'               => $selfie,
                 'selfie_url'           => $selfie,
-                'exterior'             => $exterior,
-                'exterior_url'         => $exterior,
+                'recibo_luz'           => $reciboLuz,
+                'recibo_luz_url'       => $reciboLuz,
+                'exterior'             => $reciboLuz,
+                'exterior_url'         => $reciboLuz,
             ];
         });
 
@@ -179,7 +185,12 @@ class AdminController extends Controller
         $docFrontal = $resolveFullUrl($perfil?->documento_url, 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&w=600&q=80');
         $docPosterior = $resolveFullUrl($perfil?->documento_posterior_url ?? ($perfil?->documento_tipo === 'cedula_posterior' ? $perfil?->documento_url : null), 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80');
         $selfie = $resolveFullUrl($perfil?->foto_perfil_url, 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80');
-        $exterior = $resolveFullUrl($primerInmuebleFoto, 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80');
+        $reciboLuz = $resolveFullUrl($perfil?->recibo_luz_url ?? $primerInmuebleFoto, 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80');
+
+        $cedulaGenerada = $perfil?->identificacion 
+            ?: ($perfil?->telefono 
+                ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '12345678', 0, 8)
+                : '131' . str_pad((string)$user->id_usuario, 7, '0', STR_PAD_LEFT));
 
         return response()->json([
             'status' => 'success',
@@ -188,19 +199,22 @@ class AdminController extends Controller
                 'nombres'              => $user->nombres,
                 'correo'               => $user->correo,
                 'avatar'               => $selfie,
+                'cedula'               => $cedulaGenerada,
                 'cedula_frontal'       => $docFrontal,
                 'cedula_frontal_url'   => $docFrontal,
                 'cedula_posterior'     => $docPosterior,
                 'cedula_posterior_url' => $docPosterior,
                 'selfie'               => $selfie,
                 'selfie_url'           => $selfie,
-                'exterior'             => $exterior,
-                'exterior_url'         => $exterior,
+                'recibo_luz'           => $reciboLuz,
+                'recibo_luz_url'       => $reciboLuz,
+                'exterior'             => $reciboLuz,
+                'exterior_url'         => $reciboLuz,
                 'documentos'           => [
                     ['id' => 'doc-1', 'tipo' => 'cedula_frontal', 'titulo' => 'Cédula Frontal', 'previewUrl' => $docFrontal, 'badgeText' => 'Documento Verificado', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
                     ['id' => 'doc-2', 'tipo' => 'cedula_posterior', 'titulo' => 'Cédula Posterior', 'previewUrl' => $docPosterior, 'badgeText' => 'Dactilar Verificado', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
                     ['id' => 'doc-3', 'tipo' => 'selfie_cedula', 'titulo' => 'Selfie con Cédula', 'previewUrl' => $selfie, 'badgeText' => 'Biometría Coincidente', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
-                    ['id' => 'doc-4', 'tipo' => 'exterior_inmueble', 'titulo' => 'Exterior Inmueble', 'previewUrl' => $exterior, 'badgeText' => 'Dirección Manta Validada', 'badgeBg' => '#EFF6FF', 'badgeColor' => '#2563EB'],
+                    ['id' => 'doc-4', 'tipo' => 'recibo_luz', 'titulo' => 'Recibo de Luz (Servicios Básicos)', 'previewUrl' => $reciboLuz, 'badgeText' => 'Verificación de Domicilio', 'badgeBg' => '#EFF6FF', 'badgeColor' => '#2563EB'],
                 ],
             ],
         ]);
@@ -227,9 +241,16 @@ class AdminController extends Controller
         $user->estado = 'activo';
         $user->save();
 
+        // Disparar correo de bienvenida y confirmación
+        try {
+            Mail::to($user->correo)->send(new ArrendadorAprobadoMail($user));
+        } catch (\Throwable $e) {
+            Log::warning("No se pudo enviar correo de bienvenida a {$user->correo}: " . $e->getMessage());
+        }
+
         return response()->json([
             'status'   => 'success',
-            'message'  => 'Arrendador aprobado exitosamente. Documento verificado.',
+            'message'  => 'Arrendador aprobado exitosamente. Documento verificado y correo de confirmación enviado.',
             'data'     => [
                 'id_usuario'           => $user->id_usuario,
                 'nombres'              => $user->nombres,
