@@ -16,9 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Sanctum token-based auth para rutas API (sin cookies de sesión web)
         $middleware->statefulApi();
 
-        // Alias de middleware de roles: ->middleware('role:arrendador')
+        // Alias de middleware de roles y verificación: ->middleware('role:arrendador'), ->middleware('verified')
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
+            'role'     => \App\Http\Middleware\CheckRole::class,
+            'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

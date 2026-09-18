@@ -55,13 +55,17 @@ class AuthController extends Controller
 
         $user->perfil()->create($perfilData);
 
+        // Disparar evento estándar de Laravel para enviar correo de verificación
+        event(new \Illuminate\Auth\Events\Registered($user));
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Usuario registrado exitosamente.',
-            'user'    => $user->load('rol', 'perfil'),
-            'token'   => $token,
-            'token_type' => 'Bearer',
+            'message'        => 'Usuario registrado exitosamente. Te hemos enviado un correo de confirmación para verificar tu cuenta.',
+            'user'           => $user->load('rol', 'perfil'),
+            'token'          => $token,
+            'token_type'     => 'Bearer',
+            'email_verified' => false,
         ], 201);
     }
 
@@ -87,6 +91,23 @@ class AuthController extends Controller
         if ($user->estado === 'suspendido') {
             return response()->json([
                 'message' => 'Tu cuenta está suspendida. Contacta al administrador.',
+            ], 403);
+        }
+
+        // Si el usuario no ha verificado su correo, responder 403 para activar VerifyEmailScreen en la app
+        if ($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! $user->hasVerifiedEmail()) {
+            return response()->json([
+                'status'         => 'error',
+                'message'        => 'Email no verificado. Te hemos enviado un correo de confirmación. Por favor, revisa tu bandeja de entrada o SPAM y haz clic en el enlace para activar tu cuenta.',
+                'error_code'     => 'EMAIL_NOT_VERIFIED',
+                'email_verified' => false,
+                'correo'         => $user->correo,
+                'user'           => [
+                    'id_usuario' => $user->id_usuario,
+                    'nombres'    => $user->nombres,
+                    'correo'     => $user->correo,
+                    'id_rol'     => $user->id_rol,
+                ],
             ], 403);
         }
 

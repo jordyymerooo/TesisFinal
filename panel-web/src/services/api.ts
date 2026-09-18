@@ -193,6 +193,14 @@ export interface LandlordVerification {
   fechaSolicitud: string;
   propiedadNombre: string;
   documentos: VerificationDocument[];
+  cedula_frontal?: string;
+  cedula_frontal_url?: string;
+  cedula_posterior?: string;
+  cedula_posterior_url?: string;
+  selfie?: string;
+  selfie_url?: string;
+  exterior?: string;
+  exterior_url?: string;
 }
 
 /**
@@ -218,6 +226,65 @@ export const approveLandlord = async (userId: number | string) => {
   return res.data;
 };
 
+/**
+ * Alternar estado de usuario entre 'activo' y 'suspendido' (dar de baja o reactivar)
+ * PATCH /api/v1/admin/usuarios/{id}/estado
+ */
+export const toggleUserStatus = async (id: number | string) => {
+  const res = await api.patch(`/admin/usuarios/${id}/estado`);
+  return res.data;
+};
+
+/**
+ * Actualizar datos básicos de un usuario desde el panel de administración
+ * PUT /api/v1/admin/usuarios/{id}
+ */
+export const updateAdminUser = async (id: number | string, data: any) => {
+  const res = await api.put(`/admin/usuarios/${id}`, data);
+  return res.data;
+};
+
+/**
+ * Obtener listado de conversaciones de auditoría para el administrador
+ * GET /api/v1/admin/chats
+ */
+export const getAdminChats = async () => {
+  const res = await api.get('/admin/chats');
+  return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+};
+
+/**
+ * Obtener mensajes de un chat específico
+ * GET /api/v1/admin/chats/{chat_id}/mensajes
+ */
+export const getAdminChatMessages = async (chatId: number | string) => {
+  const res = await api.get(`/admin/chats/${chatId}/mensajes`);
+  return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+};
+
+/**
+ * Enviar notificación oficial a un usuario específico desde el panel administrativo
+ * POST /api/v1/admin/usuarios/{id}/notificar
+ */
+export const sendNotificationToUser = async (
+  userId: number | string,
+  data: { titulo: string; mensaje: string }
+) => {
+  const res = await api.post(`/admin/usuarios/${userId}/notificar`, data);
+  return res.data;
+};
+
+/**
+ * Obtener estadísticas e informes para el módulo de Reportes y Analítica
+ * GET /api/v1/admin/reportes/estadisticas
+ */
+export const getAdminReportStats = async () => {
+  const res = await api.get('/admin/reportes/estadisticas');
+  return res.data?.data || res.data;
+};
+
 export default api;
+
+
 
 

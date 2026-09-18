@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import api from '../services/api';
 import {
   LayoutDashboard,
   Users,
   ShieldCheck,
+  MessageSquare,
   Building2,
   BarChart3,
   Search,
@@ -16,17 +18,42 @@ import {
 const WINE = '#8C1515';
 const SIDEBAR_BG = '#1E1E2E';
 
-const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/usuarios', label: 'Usuarios', icon: Users },
-  { path: '/verificacion', label: 'Verificación', icon: ShieldCheck, badge: '3' },
-  { path: '/propiedades', label: 'Propiedades', icon: Building2 },
-  { path: '/reportes', label: 'Reportes', icon: BarChart3 },
-];
-
 export function AdminLayout() {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  const fetchPendingCount = async () => {
+    try {
+      const res = await api.get('/admin/arrendadores/pendientes');
+      const total = res.data?.total ?? (Array.isArray(res.data?.data) ? res.data.data.length : 0);
+      setPendingCount(total);
+    } catch (err) {
+      console.warn('[AdminLayout] Error al obtener solicitudes pendientes:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingCount();
+
+    const handleUpdate = () => {
+      fetchPendingCount();
+    };
+
+    window.addEventListener('verification-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('verification-updated', handleUpdate);
+    };
+  }, [location.pathname]);
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/usuarios', label: 'Usuarios', icon: Users },
+    { path: '/verificacion', label: 'Verificación', icon: ShieldCheck, isVerification: true },
+    { path: '/auditoria-chats', label: 'Auditoría de Chats', icon: MessageSquare },
+    { path: '/propiedades', label: 'Propiedades', icon: Building2 },
+    { path: '/reportes', label: 'Reportes', icon: BarChart3 },
+  ];
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FA', fontFamily: "'Inter', sans-serif" }}>
@@ -77,7 +104,7 @@ export function AdminLayout() {
             Menú Principal
           </div>
 
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
 
@@ -104,19 +131,21 @@ export function AdminLayout() {
                   <span>{item.label}</span>
                 </div>
 
-                {item.badge ? (
-                  <span
-                    style={{
-                      background: isActive ? 'rgba(255,255,255,0.25)' : '#F59E0B',
-                      color: isActive ? '#FFFFFF' : '#111',
-                      fontSize: 10,
-                      fontWeight: 800,
-                      padding: '2px 7px',
-                      borderRadius: 10,
-                    }}
-                  >
-                    {item.badge}
-                  </span>
+                {item.isVerification ? (
+                  pendingCount > 0 && (
+                    <span
+                      style={{
+                        background: isActive ? 'rgba(255,255,255,0.25)' : '#F59E0B',
+                        color: isActive ? '#FFFFFF' : '#111',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: 10,
+                      }}
+                    >
+                      {pendingCount}
+                    </span>
+                  )
                 ) : (
                   isActive && <ChevronRight size={14} color="#FFFFFF" />
                 )}
@@ -202,26 +231,28 @@ export function AdminLayout() {
               title="Notificaciones"
             >
               <Bell size={18} color="#4B5563" />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: -3,
-                  right: -3,
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: WINE,
-                  color: '#fff',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px solid #fff',
-                }}
-              >
-                3
-              </span>
+              {pendingCount > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: WINE,
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px solid #fff',
+                  }}
+                >
+                  {pendingCount}
+                </span>
+              )}
             </button>
 
             {/* Divisor */}
@@ -260,3 +291,6 @@ export function AdminLayout() {
     </div>
   );
 }
+
+export default AdminLayout;
+

@@ -2,15 +2,20 @@
 
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\FavoritoController;
 use App\Http\Controllers\Api\FotografiaController;
 use App\Http\Controllers\Api\InmuebleController;
 use App\Http\Controllers\Api\MensajeController;
 use App\Http\Controllers\Api\NotificacionController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PerfilController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RolController;
 use App\Http\Controllers\Api\SolicitudReservaController;
 use App\Http\Controllers\Api\UbicacionController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,15 +29,25 @@ use Illuminate\Support\Facades\Route;
 |
 | Grupos de acceso:
 |   - Públicas (sin token)         → auth/register, auth/login, inmuebles GET
-|   - Autenticadas (auth:sanctum)  → resto de endpoints
-|   - Rol arrendador               → crear/editar/eliminar inmuebles
-|   - Rol estudiante               → crear solicitudes
-|   - Rol administrador            → verificaciones, auditoría
+|   - Autenticadas (Bearer Token)  → alquileres, perfiles, mensajes (con verified)
+|   - Por Rol (role:estudiante)    → solicitudes de reserva, favoritos
+|   - Por Rol (role:arrendador)    → publicar/editar inmuebles, responder solicitudes
+|   - Por Rol (role:administrador) → KYC, auditorías, gestión de usuarios
 |
 */
 
 // ─────────────────────────────────────────────
-// HEALTH CHECK
+// VERIFICACIÓN DE EMAIL (MustVerifyEmail)
+// ─────────────────────────────────────────────
+Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->name('verification.verify');
+Route::get('/v1/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->name('v1.verification.verify');
+Route::post('/email/verification-notification', [EmailVerificationController::class, 'resend'])->name('verification.send');
+Route::post('/v1/email/verification-notification', [EmailVerificationController::class, 'resend'])->name('v1.verification.send');
+Route::post('/email/verify-status', [EmailVerificationController::class, 'checkStatus'])->name('verification.status');
+Route::post('/v1/email/verify-status', [EmailVerificationController::class, 'checkStatus'])->name('v1.verification.status');
+
+// ─────────────────────────────────────────────
+// HEALTHCHECK & PING
 // ─────────────────────────────────────────────
 Route::get('/v1/ping', fn () => response()->json([
     'status'  => 'ok',
@@ -67,19 +82,22 @@ Route::prefix('v1')->group(function () {
     Route::get('/inmuebles/mapa',     [InmuebleController::class, 'mapa'])->name('inmuebles.mapa');
     Route::get('/inmuebles/{id}',     [InmuebleController::class, 'show'])->name('inmuebles.show');
 
-    // Gestión de inmuebles: solo arrendador autenticado
-    Route::middleware(['auth:sanctum', 'role:arrendador'])->group(function () {
-        Route::post('/inmuebles',         [InmuebleController::class, 'store'])->name('inmuebles.store');
-        Route::put('/inmuebles/{id}',     [InmuebleController::class, 'update'])->name('inmuebles.update');
-        Route::patch('/inmuebles/{id}',   [InmuebleController::class, 'update']);
-        Route::delete('/inmuebles/{id}',  [InmuebleController::class, 'destroy'])->name('inmuebles.destroy');
+    // Gestión de inmuebles: solo arrendador autenticado y con correo verificado
+    Route::middleware(['auth:sanctum', 'verified', 'role:arrendador'])->group(function () {
+        Route::post('/inmuebles',              [InmuebleController::class, 'store'])->name('inmuebles.store');
+        Route::patch('/inmuebles/{id}/estado', [InmuebleController::class, 'toggleStatus'])->name('inmuebles.toggleStatus');
+        Route::post('/inmuebles/{id}/estado',  [InmuebleController::class, 'toggleStatus']);
+        Route::put('/inmuebles/{id}',          [InmuebleController::class, 'update'])->name('inmuebles.update');
+        Route::patch('/inmuebles/{id}',        [InmuebleController::class, 'update']);
+        Route::post('/inmuebles/{id}',         [InmuebleController::class, 'update']);
+        Route::delete('/inmuebles/{id}',       [InmuebleController::class, 'destroy'])->name('inmuebles.destroy');
     });
 });
 
 // ─────────────────────────────────────────────
-// SOLICITUDES DE RESERVA
+// SOLICITUDES DE RESERVA (requiere auth:sanctum y verified)
 // ─────────────────────────────────────────────
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // Listar y ver solicitudes: estudiante ve las suyas, arrendador ve las de sus inmuebles
     Route::get('/solicitudes',          [SolicitudReservaController::class, 'index'])->name('solicitudes.index');
@@ -96,9 +114,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 });
 
 // ─────────────────────────────────────────────
-// MENSAJES (Chat en tiempo real)
+// MENSAJES (Chat en tiempo real - requiere auth:sanctum y verified)
 // ─────────────────────────────────────────────
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function () {
     // Listado de conversaciones activas
     Route::get('/mensajes/conversaciones',                  [MensajeController::class, 'conversaciones'])->name('mensajes.conversaciones');
     
@@ -129,11 +147,29 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'role:administrador'])->group(f
 // ─────────────────────────────────────────────
 Route::prefix('v1/admin')->group(function () {
     Route::get('/stats', [AdminController::class, 'stats'])->name('admin.stats');
+    Route::get('/usuarios', [AdminController::class, 'usuarios'])->name('admin.usuarios');
+    Route::get('/users', [AdminController::class, 'usuarios'])->name('admin.users');
+    Route::post('/usuarios', [UserController::class, 'storeAsAdmin'])->name('admin.usuarios.store');
+    Route::patch('/usuarios/{id}/estado', [UserController::class, 'toggleStatus'])->name('admin.usuarios.toggleStatus');
+    Route::post('/usuarios/{id}/estado', [UserController::class, 'toggleStatus']);
+    Route::put('/usuarios/{id}', [UserController::class, 'updateAsAdmin'])->name('admin.usuarios.update');
+    Route::patch('/usuarios/{id}', [UserController::class, 'updateAsAdmin']);
+    Route::post('/usuarios/{id}', [UserController::class, 'updateAsAdmin']);
+    Route::post('/usuarios/{id}/notificar', [NotificationController::class, 'sendToUser'])->name('admin.usuarios.notificar');
+    Route::delete('/usuarios/{id}', [UserController::class, 'destroy'])->name('admin.usuarios.destroy');
 
     // Endpoints KYC para Arrendadores
     Route::get('/arrendadores/pendientes', [AdminController::class, 'getPendingLandlords'])->name('admin.arrendadores.pendientes');
     Route::get('/pending-verifications', [AdminController::class, 'getPendingLandlords'])->name('admin.pending-verifications');
+    Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification'])->name('admin.verificaciones.show');
     Route::patch('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord'])->name('admin.arrendadores.aprobar');
+
+    // Auditoría de Mensajes y Conversaciones
+    Route::get('/chats', [ChatController::class, 'adminIndex'])->name('admin.chats.index');
+    Route::get('/chats/{chat_id}/mensajes', [ChatController::class, 'adminMessages'])->name('admin.chats.messages');
+
+    // Reportes y Analítica
+    Route::get('/reportes/estadisticas', [ReportController::class, 'getStats'])->name('admin.reportes.stats');
 
     Route::get('/inmuebles/pendientes', function () {
         $pendientes = \App\Models\Inmueble::with(['arrendador.perfil', 'ubicacion', 'fotografias'])
@@ -204,7 +240,9 @@ Route::get('/v1/roles', [RolController::class, 'index'])->name('roles.index');
 // ─────────────────────────────────────────────
 // PERFIL (usuario autenticado)
 // ─────────────────────────────────────────────
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+// PERFIL (usuario autenticado y verificado)
+// ─────────────────────────────────────────────
+Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::get('/perfil',          [PerfilController::class, 'show'])->name('perfil.show');
     Route::put('/perfil',          [PerfilController::class, 'update'])->name('perfil.update');
     Route::patch('/perfil',        [PerfilController::class, 'update']);
@@ -218,8 +256,8 @@ Route::prefix('v1')->group(function () {
     // Ver fotos: disponible para todos (autenticado o no)
     Route::get('/inmuebles/{idInmueble}/fotografias', [FotografiaController::class, 'index'])->name('fotografias.index');
 
-    // Subir/eliminar fotos: solo arrendador propietario
-    Route::middleware(['auth:sanctum', 'role:arrendador'])->group(function () {
+    // Subir/eliminar fotos: solo arrendador propietario verificado
+    Route::middleware(['auth:sanctum', 'verified', 'role:arrendador'])->group(function () {
         Route::post('/inmuebles/{idInmueble}/fotografias',  [FotografiaController::class, 'store'])->name('fotografias.store');
         Route::delete('/fotografias/{id}',                  [FotografiaController::class, 'destroy'])->name('fotografias.destroy');
         Route::patch('/fotografias/{id}/portada',           [FotografiaController::class, 'setPortada'])->name('fotografias.portada');
@@ -233,8 +271,8 @@ Route::prefix('v1')->group(function () {
     // Ver ubicación: público
     Route::get('/inmuebles/{idInmueble}/ubicacion', [UbicacionController::class, 'show'])->name('ubicacion.show');
 
-    // Crear/actualizar ubicación: solo arrendador propietario
-    Route::middleware(['auth:sanctum', 'role:arrendador'])->group(function () {
+    // Crear/actualizar ubicación: solo arrendador propietario verificado
+    Route::middleware(['auth:sanctum', 'verified', 'role:arrendador'])->group(function () {
         Route::post('/inmuebles/{idInmueble}/ubicacion',  [UbicacionController::class, 'upsert'])->name('ubicacion.upsert');
         Route::put('/inmuebles/{idInmueble}/ubicacion',   [UbicacionController::class, 'upsert']);
         Route::patch('/inmuebles/{idInmueble}/ubicacion', [UbicacionController::class, 'upsert']);
@@ -242,22 +280,11 @@ Route::prefix('v1')->group(function () {
 });
 
 // ─────────────────────────────────────────────
-// PANEL DEL ARRENDADOR (Módulo 3)
+// PANEL DEL ARRENDADOR (Módulo 3 - requiere auth:sanctum y verified)
 // ─────────────────────────────────────────────
-Route::prefix('v1/arrendador')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/arrendador')->middleware(['auth:sanctum', 'verified'])->group(function () {
     // Inmuebles del arrendador autenticado
-    Route::get('/inmuebles', function (\Illuminate\Http\Request $request) {
-        $user = $request->user();
-        $inmuebles = \App\Models\Inmueble::where('id_arrendador', $user->id_usuario)
-            ->with(['ubicacion', 'fotografias'])
-            ->latest()
-            ->get();
-
-        return response()->json([
-            'status' => 'success',
-            'data'   => $inmuebles,
-        ]);
-    })->name('arrendador.inmuebles');
+    Route::get('/inmuebles', [InmuebleController::class, 'misInmuebles'])->name('arrendador.inmuebles');
 
     // Solicitudes recibidas en los inmuebles del arrendador
     Route::get('/solicitudes', function (\Illuminate\Http\Request $request) {
@@ -285,9 +312,9 @@ Route::prefix('v1/arrendador')->middleware('auth:sanctum')->group(function () {
 });
 
 // ─────────────────────────────────────────────
-// MÓDULO DE ESTUDIANTES (Favoritos & Solicitudes)
+// MÓDULO DE ESTUDIANTES (Favoritos & Solicitudes - requiere auth:sanctum y verified)
 // ─────────────────────────────────────────────
-Route::prefix('v1/estudiante')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/estudiante')->middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::get('/favoritos',         [FavoritoController::class, 'index'])->name('estudiante.favoritos.index');
     Route::post('/favoritos/toggle', [FavoritoController::class, 'toggle'])->name('estudiante.favoritos.toggle');
     Route::get('/solicitudes',       [SolicitudReservaController::class, 'misSolicitudes'])->name('estudiante.solicitudes.index');
@@ -302,4 +329,22 @@ Route::prefix('v1/notificaciones')->middleware('auth:sanctum')->group(function (
     Route::patch('/{id}',        [NotificacionController::class, 'update'])->name('notificaciones.update.one');
     Route::patch('/leer-todas',  [NotificacionController::class, 'update'])->name('notificaciones.readall');
 });
+
+Route::prefix('admin')->group(function () {
+    Route::post('/usuarios', [UserController::class, 'storeAsAdmin']);
+    Route::delete('/usuarios/{id}', [UserController::class, 'destroy']);
+    Route::get('/chats', [ChatController::class, 'adminIndex']);
+    Route::get('/chats/{chat_id}/mensajes', [ChatController::class, 'adminMessages']);
+    Route::post('/usuarios/{id}/notificar', [NotificationController::class, 'sendToUser']);
+    Route::get('/reportes/estadisticas', [ReportController::class, 'getStats']);
+    Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification']);
+});
+
+Route::post('/admin/usuarios', [UserController::class, 'storeAsAdmin']);
+Route::delete('/admin/usuarios/{id}', [UserController::class, 'destroy']);
+Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification']);
+
+// Endpoint móvil para listar notificaciones del usuario
+Route::get('/v1/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('v1.mis-notificaciones');
+Route::get('/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('mis-notificaciones');
 

@@ -21,15 +21,15 @@ class InmuebleController extends Controller
 
         // Arrendador: ve solo sus inmuebles (todos los estados)
         if ($user && $user->esArrendador()) {
-            $inmuebles = Inmueble::where('id_arrendador', $user->id_usuario)
+            $inmuebles = Inmueble::where('id_arrendador', auth()->id() ?? $user->id_usuario)
                 ->with(['ubicacion', 'fotografias'])
                 ->paginate(15);
 
             return response()->json($inmuebles);
         }
 
-        // Estudiante / público: solo inmuebles publicados
-        $inmuebles = Inmueble::where('estado', 'publicado')
+        // Estudiante / público: solo inmuebles disponibles (publicados y no ocupados)
+        $inmuebles = Inmueble::whereIn('estado', ['disponible', 'publicado'])
             ->with(['ubicacion', 'fotografias'])
             ->paginate(15);
 
@@ -43,7 +43,7 @@ class InmuebleController extends Controller
      */
     public function mapa(Request $request)
     {
-        $inmuebles = Inmueble::where('estado', 'publicado')
+        $inmuebles = Inmueble::whereIn('estado', ['disponible', 'publicado'])
             ->with([
                 'ubicacion:id_inmueble,latitud,longitud,direccion_referencial,sector,distancia_uleam_km',
                 'fotografias' => fn ($q) => $q->where('es_portada', true)->orderBy('orden')->limit(1),
@@ -64,11 +64,12 @@ class InmuebleController extends Controller
                     : 'Cerca de ULEAM';
 
                 return [
-                    'id'            => $i->id_inmueble,
-                    'titulo'        => $i->titulo,
-                    'precio'        => '$' . number_format($i->precio, 0),
-                    'precio_numero' => (float) $i->precio,
-                    'tipo'          => ucfirst(str_replace('_', ' ', $i->tipo)),
+                    'id'             => $i->id_inmueble,
+                    'titulo'         => $i->titulo,
+                    'precio'         => '$' . number_format((float) $i->precio, 2, '.', ','),
+                    'precio_mensual' => (float) $i->precio,
+                    'precio_numero'  => (float) $i->precio,
+                    'tipo'           => ucfirst(str_replace('_', ' ', $i->tipo)),
                     'tipo_raw'      => $i->tipo,
                     'capacidad'     => (int) ($i->capacidad ?? 1),
                     'calificacion'  => $i->calificacion_promedio ?? 4.5,
@@ -94,9 +95,17 @@ class InmuebleController extends Controller
      */
     public function store(Request $request)
     {
+        if (auth()->user()?->estado !== 'activo') {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Tu cuenta aún está en revisión por el administrador.',
+            ], 403);
+        }
+
         $request->validate([
             'titulo'                => ['required', 'string', 'max:150'],
             'descripcion'           => ['nullable', 'string'],
+            'normas'                => ['nullable', 'string'],
             'precio'                => ['required', 'numeric', 'min:0'],
             'tipo'                  => ['nullable', 'string', 'in:cuarto,mini_departamento,departamento_compartido,suite'],
             'capacidad'             => ['nullable', 'integer', 'min:1', 'max:255'],
@@ -116,6 +125,7 @@ class InmuebleController extends Controller
                 'id_arrendador'         => $request->user()->id_usuario,
                 'titulo'                => $request->input('titulo'),
                 'descripcion'           => $request->input('descripcion'),
+                'normas'                => $request->input('normas'),
                 'precio'                => $request->input('precio'),
                 'tipo'                  => $tipo,
                 'capacidad'             => $request->input('capacidad', 1),
@@ -178,9 +188,33 @@ class InmuebleController extends Controller
                 }
             }
 
+            // Sincronizar servicios si vienen en la creación
+            if ($request->has('servicios')) {
+                $serviciosInput = $request->input('servicios');
+                if (is_string($serviciosInput)) {
+                    $decoded = json_decode($serviciosInput, true);
+                    $serviciosInput = is_array($decoded) ? $decoded : explode(',', $serviciosInput);
+                }
+                if (is_array($serviciosInput)) {
+                    $servicioIds = [];
+                    foreach ($serviciosInput as $s) {
+                        if (is_numeric($s)) {
+                            $servicioIds[] = (int) $s;
+                        } elseif (is_string($s) && trim($s) !== '') {
+                            $clean = trim($s);
+                            $found = \App\Models\Servicio::where('clave', $clean)->orWhere('nombre', $clean)->first();
+                            if ($found) {
+                                $servicioIds[] = $found->id_servicio;
+                            }
+                        }
+                    }
+                    $inmueble->servicios()->sync($servicioIds);
+                }
+            }
+
             return response()->json([
                 'message'  => 'Inmueble creado exitosamente.',
-                'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias']),
+                'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios']),
             ], 201);
         });
     }
@@ -195,6 +229,7 @@ class InmuebleController extends Controller
             'arrendador.perfil',
             'fotografias' => fn ($q) => $q->orderBy('orden'),
             'ubicacion',
+            'servicios',
         ])->findOrFail($id);
 
         // Solo mostrar inmuebles no publicados al propio arrendador o administrador
@@ -209,17 +244,38 @@ class InmuebleController extends Controller
     }
 
     /**
+     * GET /api/v1/arrendador/inmuebles
+     * Lista solo las propiedades del arrendador autenticado.
+     */
+    public function misInmuebles(Request $request)
+    {
+        $inmuebles = Inmueble::where('id_arrendador', auth()->id() ?? $request->user()?->id_usuario)
+            ->with(['ubicacion', 'fotografias', 'servicios'])
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $inmuebles,
+        ]);
+    }
+
+    /**
      * PUT /api/v1/inmuebles/{id}
      * Actualizar inmueble. Solo el arrendador propietario.
      */
     public function update(Request $request, string $id)
     {
-        $inmueble = Inmueble::where('id_arrendador', $request->user()->id_usuario)
-            ->findOrFail($id);
+        $inmueble = Inmueble::findOrFail($id);
+
+        if ($inmueble->id_arrendador !== auth()->id() && (int) $inmueble->id_arrendador !== (int) auth()->id()) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
 
         $data = $request->validate([
             'titulo'               => ['sometimes', 'string', 'max:150'],
             'descripcion'          => ['nullable', 'string'],
+            'normas'               => ['nullable', 'string'],
             'precio'               => ['sometimes', 'numeric', 'min:0'],
             'tipo'                 => ['sometimes', 'in:cuarto,mini_departamento,departamento_compartido,suite'],
             'estado'               => ['sometimes', 'in:borrador,publicado,inactivo'],
@@ -229,9 +285,68 @@ class InmuebleController extends Controller
 
         $inmueble->update($data);
 
+        // Sincronizar relación de servicios si vienen en el request
+        if ($request->has('servicios')) {
+            $serviciosInput = $request->input('servicios');
+            if (is_string($serviciosInput)) {
+                $decoded = json_decode($serviciosInput, true);
+                $serviciosInput = is_array($decoded) ? $decoded : explode(',', $serviciosInput);
+            }
+            if (is_array($serviciosInput)) {
+                $servicioIds = [];
+                foreach ($serviciosInput as $s) {
+                    if (is_numeric($s)) {
+                        $servicioIds[] = (int) $s;
+                    } elseif (is_string($s) && trim($s) !== '') {
+                        $clean = trim($s);
+                        $found = \App\Models\Servicio::where('clave', $clean)->orWhere('nombre', $clean)->first();
+                        if ($found) {
+                            $servicioIds[] = $found->id_servicio;
+                        }
+                    }
+                }
+                $inmueble->servicios()->sync($servicioIds);
+                $inmueble->update(['servicios_incluidos' => count($servicioIds) > 0]);
+            }
+        }
+
+        // Si se enviaron nuevas fotos
+        if ($request->hasFile('fotos')) {
+            $files = $request->file('fotos');
+            if (!is_array($files)) {
+                $files = [$files];
+            }
+            foreach ($files as $index => $file) {
+                if ($file && $file->isValid()) {
+                    $path = $file->store('inmuebles', 'public');
+                    $url  = asset("storage/{$path}");
+
+                    Fotografia::create([
+                        'id_inmueble' => $inmueble->id_inmueble,
+                        'url'         => $url,
+                        'orden'       => $index + 1,
+                        'es_portada'  => ($index === 0),
+                    ]);
+                }
+            }
+        }
+
+        // Si se envió ubicación al editar
+        if ($request->filled('latitud') && $request->filled('longitud')) {
+            Ubicacion::updateOrCreate(
+                ['id_inmueble' => $inmueble->id_inmueble],
+                [
+                    'latitud'               => $request->input('latitud'),
+                    'longitud'              => $request->input('longitud'),
+                    'sector'                => $request->input('sector', 'Barbasquillo / ULEAM'),
+                    'direccion_referencial' => $request->input('direccion_referencial', 'Cerca de ULEAM'),
+                ]
+            );
+        }
+
         return response()->json([
             'message'  => 'Inmueble actualizado.',
-            'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias']),
+            'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios']),
         ]);
     }
 
@@ -241,11 +356,43 @@ class InmuebleController extends Controller
      */
     public function destroy(Request $request, string $id)
     {
-        $inmueble = Inmueble::where('id_arrendador', $request->user()->id_usuario)
-            ->findOrFail($id);
+        $inmueble = Inmueble::findOrFail($id);
+
+        if ($inmueble->id_arrendador !== auth()->id() && (int) $inmueble->id_arrendador !== (int) auth()->id()) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
 
         $inmueble->delete();
 
         return response()->json(['message' => 'Inmueble eliminado.'], 200);
+    }
+
+    /**
+     * PATCH /api/v1/inmuebles/{id}/estado
+     * Alternar el estado de un inmueble (ej. 'disponible' vs 'ocupada'). Solo el propietario.
+     */
+    public function toggleStatus(Request $request, string $id)
+    {
+        $inmueble = Inmueble::findOrFail($id);
+
+        $authUserId = auth()->id() ?? $request->user()?->id_usuario;
+        if ((int) $inmueble->id_arrendador !== (int) $authUserId) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'estado' => ['required', 'string', 'in:disponible,ocupada,ocupado,publicado,inactivo,borrador'],
+        ]);
+
+        $nuevoEstado = $request->input('estado');
+        $inmueble->estado = $nuevoEstado;
+        $inmueble->save();
+
+        return response()->json([
+            'status'   => 'success',
+            'message'  => 'Estado del inmueble actualizado correctamente.',
+            'estado'   => $inmueble->estado,
+            'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios']),
+        ]);
     }
 }

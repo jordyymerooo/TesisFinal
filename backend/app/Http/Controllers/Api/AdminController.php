@@ -22,7 +22,13 @@ class AdminController extends Controller
         $usuariosCount = User::count();
         $inmueblesCount = Inmueble::count();
         $reservasCount = SolicitudReserva::where('estado', 'aceptada')->count();
-        $reportesCount = Verificacion::where('estado', 'pendiente')->count();
+        $pendingLandlordsCount = User::where('id_rol', 2)
+            ->where(function ($query) {
+                $query->whereHas('perfil', function ($q) {
+                    $q->where('documento_verificado', false);
+                })->orWhereDoesntHave('perfil');
+            })
+            ->count();
 
         return response()->json([
             'status' => 'success',
@@ -33,7 +39,9 @@ class AdminController extends Controller
                 'propiedades_trend'      => '+8.2%',
                 'reservas_activas'       => max($reservasCount, 89),
                 'reservas_trend'         => '+24.0%',
-                'reportes_pendientes'    => max($reportesCount, 3),
+                'reportes_pendientes'    => $pendingLandlordsCount,
+                'pending_verifications'  => $pendingLandlordsCount,
+                'total_pendientes'       => $pendingLandlordsCount,
                 'reportes_trend'         => '-50%',
             ]
         ]);
@@ -61,18 +69,27 @@ class AdminController extends Controller
             $primerInmueble = $user->inmuebles->first();
             $primerInmuebleFoto = $primerInmueble?->fotografias?->first()?->url;
 
-            // Construir documentos KYC
-            $docFrontal = $perfil?->documento_url ?: 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&w=600&q=80';
-            $docPosterior = 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80';
-            $selfie = $perfil?->foto_perfil_url ?: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80';
-            $exterior = $primerInmuebleFoto ?: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80';
+            $resolveFullUrl = function ($url, $fallback) {
+                if (!$url) return $fallback;
+                if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+                    return $url;
+                }
+                $clean = ltrim(str_replace('storage/', '', $url), '/');
+                return asset('storage/' . $clean);
+            };
+
+            // Construir documentos KYC usando fotos reales o placeholders con ruta completa
+            $docFrontal = $resolveFullUrl($perfil?->documento_url, 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&w=600&q=80');
+            $docPosterior = $resolveFullUrl($perfil?->documento_posterior_url ?? ($perfil?->documento_tipo === 'cedula_posterior' ? $perfil?->documento_url : null), 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80');
+            $selfie = $resolveFullUrl($perfil?->foto_perfil_url, 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80');
+            $exterior = $resolveFullUrl($primerInmuebleFoto, 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80');
 
             $documentos = [
                 [
                     'id' => 'doc-1',
                     'tipo' => 'cedula_frontal',
                     'titulo' => 'Cédula Frontal',
-                    'badgeText' => 'Legible / OCR Válido',
+                    'badgeText' => $perfil?->documento_url ? 'Documento Subido' : 'Legible / OCR Válido',
                     'badgeBg' => '#ECFDF5',
                     'badgeColor' => '#059669',
                     'previewUrl' => $docFrontal,
@@ -90,7 +107,7 @@ class AdminController extends Controller
                     'id' => 'doc-3',
                     'tipo' => 'selfie_cedula',
                     'titulo' => 'Selfie con Cédula',
-                    'badgeText' => 'Biometría Coincidente',
+                    'badgeText' => $perfil?->foto_perfil_url ? 'Foto de Perfil Subida' : 'Biometría Coincidente',
                     'badgeBg' => '#ECFDF5',
                     'badgeColor' => '#059669',
                     'previewUrl' => $selfie,
@@ -99,7 +116,7 @@ class AdminController extends Controller
                     'id' => 'doc-4',
                     'tipo' => 'exterior_inmueble',
                     'titulo' => 'Exterior Inmueble',
-                    'badgeText' => 'Dirección Manta Validada',
+                    'badgeText' => $primerInmuebleFoto ? 'Fachada del Inmueble' : 'Dirección Manta Validada',
                     'badgeBg' => '#EFF6FF',
                     'badgeColor' => '#2563EB',
                     'previewUrl' => $exterior,
@@ -111,16 +128,24 @@ class AdminController extends Controller
                 : '131' . str_pad((string)$user->id_usuario, 7, '0', STR_PAD_LEFT);
 
             return [
-                'id'              => $user->id_usuario,
-                'nombres'         => $user->nombres,
-                'correo'          => $user->correo,
-                'avatar'          => $perfil?->foto_perfil_url ?: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-                'cedula'          => $cedulaGenerada,
-                'tipo'            => $primerInmueble ? ucfirst(str_replace('_', ' ', $primerInmueble->tipo)) : 'Alojamiento Estudiantil',
-                'rolCarrera'      => 'Rol de Arrendador / Registro ULEAM',
-                'fechaSolicitud'  => $user->created_at ? $user->created_at->format('d M Y, H:i') : 'Hoy, 09:30',
-                'propiedadNombre' => $primerInmueble ? $primerInmueble->titulo : 'Alojamiento en Manta',
-                'documentos'      => $documentos,
+                'id'                   => $user->id_usuario,
+                'nombres'              => $user->nombres,
+                'correo'               => $user->correo,
+                'avatar'               => $selfie,
+                'cedula'               => $cedulaGenerada,
+                'tipo'                 => $primerInmueble ? ucfirst(str_replace('_', ' ', $primerInmueble->tipo)) : 'Alojamiento Estudiantil',
+                'rolCarrera'           => 'Rol de Arrendador / Registro ULEAM',
+                'fechaSolicitud'       => $user->created_at ? $user->created_at->format('d M Y, H:i') : 'Hoy, 09:30',
+                'propiedadNombre'      => $primerInmueble ? $primerInmueble->titulo : 'Alojamiento en Manta',
+                'documentos'           => $documentos,
+                'cedula_frontal'       => $docFrontal,
+                'cedula_frontal_url'   => $docFrontal,
+                'cedula_posterior'     => $docPosterior,
+                'cedula_posterior_url' => $docPosterior,
+                'selfie'               => $selfie,
+                'selfie_url'           => $selfie,
+                'exterior'             => $exterior,
+                'exterior_url'         => $exterior,
             ];
         });
 
@@ -128,6 +153,56 @@ class AdminController extends Controller
             'status' => 'success',
             'total'  => $formatted->count(),
             'data'   => $formatted,
+        ]);
+    }
+
+    /**
+     * Detalle de solicitud KYC de un arrendador específico.
+     * GET /api/v1/admin/verificaciones/{id}
+     */
+    public function showVerification($id): JsonResponse
+    {
+        $user = User::with(['perfil', 'inmuebles.fotografias', 'inmuebles.ubicacion'])->findOrFail($id);
+        $perfil = $user->perfil;
+        $primerInmueble = $user->inmuebles->first();
+        $primerInmuebleFoto = $primerInmueble?->fotografias?->first()?->url;
+
+        $resolveFullUrl = function ($url, $fallback) {
+            if (!$url) return $fallback;
+            if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+                return $url;
+            }
+            $clean = ltrim(str_replace('storage/', '', $url), '/');
+            return asset('storage/' . $clean);
+        };
+
+        $docFrontal = $resolveFullUrl($perfil?->documento_url, 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?auto=format&fit=crop&w=600&q=80');
+        $docPosterior = $resolveFullUrl($perfil?->documento_posterior_url ?? ($perfil?->documento_tipo === 'cedula_posterior' ? $perfil?->documento_url : null), 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80');
+        $selfie = $resolveFullUrl($perfil?->foto_perfil_url, 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80');
+        $exterior = $resolveFullUrl($primerInmuebleFoto, 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id'                   => $user->id_usuario,
+                'nombres'              => $user->nombres,
+                'correo'               => $user->correo,
+                'avatar'               => $selfie,
+                'cedula_frontal'       => $docFrontal,
+                'cedula_frontal_url'   => $docFrontal,
+                'cedula_posterior'     => $docPosterior,
+                'cedula_posterior_url' => $docPosterior,
+                'selfie'               => $selfie,
+                'selfie_url'           => $selfie,
+                'exterior'             => $exterior,
+                'exterior_url'         => $exterior,
+                'documentos'           => [
+                    ['id' => 'doc-1', 'tipo' => 'cedula_frontal', 'titulo' => 'Cédula Frontal', 'previewUrl' => $docFrontal, 'badgeText' => 'Documento Verificado', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
+                    ['id' => 'doc-2', 'tipo' => 'cedula_posterior', 'titulo' => 'Cédula Posterior', 'previewUrl' => $docPosterior, 'badgeText' => 'Dactilar Verificado', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
+                    ['id' => 'doc-3', 'tipo' => 'selfie_cedula', 'titulo' => 'Selfie con Cédula', 'previewUrl' => $selfie, 'badgeText' => 'Biometría Coincidente', 'badgeBg' => '#ECFDF5', 'badgeColor' => '#059669'],
+                    ['id' => 'doc-4', 'tipo' => 'exterior_inmueble', 'titulo' => 'Exterior Inmueble', 'previewUrl' => $exterior, 'badgeText' => 'Dirección Manta Validada', 'badgeBg' => '#EFF6FF', 'badgeColor' => '#2563EB'],
+                ],
+            ],
         ]);
     }
 
@@ -161,6 +236,83 @@ class AdminController extends Controller
                 'correo'               => $user->correo,
                 'documento_verificado' => true,
             ],
+        ]);
+    }
+
+    /**
+     * Listado de usuarios registrados para el panel de administración.
+     * GET /api/v1/admin/usuarios
+     */
+    public function usuarios(Request $request): JsonResponse
+    {
+        $query = User::with(['rol', 'perfil']);
+
+        if ($request->filled('rol') && $request->input('rol') !== 'todos') {
+            $rolParam = $request->input('rol');
+            $query->whereHas('rol', function ($q) use ($rolParam) {
+                $q->whereRaw('LOWER(nombre) = ?', [strtolower($rolParam)]);
+            });
+        }
+
+        if ($request->filled('estado') && $request->input('estado') !== 'todos') {
+            $query->where('estado', $request->input('estado'));
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower(trim($request->input('search')));
+            $query->where(function ($q) use ($s) {
+                $q->whereRaw('LOWER(nombres) LIKE ?', ["%{$s}%"])
+                  ->orWhereRaw('LOWER(correo) LIKE ?', ["%{$s}%"]);
+            });
+        }
+
+        $usuarios = $query->orderBy('id_usuario', 'asc')->get();
+
+        $formatted = $usuarios->map(function ($u) {
+            $perfil = $u->perfil;
+            $rolNombre = strtolower($u->rol?->nombre ?? 'estudiante');
+
+            // Determinar la foto de perfil y generar la URL completa accesible desde el navegador
+            $fotoOriginal = $perfil?->foto_perfil_url ?? $u->foto_perfil ?? null;
+            $fotoUrl = null;
+
+            if ($fotoOriginal) {
+                if (str_starts_with($fotoOriginal, 'http://') || str_starts_with($fotoOriginal, 'https://')) {
+                    $fotoUrl = $fotoOriginal;
+                } else {
+                    $cleaned = ltrim(str_replace('storage/', '', $fotoOriginal), '/');
+                    $fotoUrl = asset('storage/' . $cleaned);
+                }
+            }
+
+            // Fallback amigable para avatar
+            $avatar = $fotoUrl;
+            if (!$avatar) {
+                $seed = urlencode($u->nombres);
+                $avatar = "https://ui-avatars.com/api/?name={$seed}&background=8C1515&color=fff&size=128";
+            }
+
+            return [
+                'id_usuario'           => $u->id_usuario,
+                'id'                   => $u->id_usuario,
+                'nombres'              => $u->nombres,
+                'correo'               => $u->correo,
+                'cedula'               => $perfil?->telefono ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '00000000', 0, 8) : '13' . str_pad((string)$u->id_usuario, 8, '0', STR_PAD_LEFT),
+                'rol'                  => $rolNombre,
+                'estado'               => $u->estado ?: 'activo',
+                'foto_url'             => $fotoUrl,
+                'avatar'               => $avatar,
+                'telefono'             => $perfil?->telefono,
+                'ciudad_origen'        => $perfil?->ciudad_origen,
+                'documento_verificado' => (bool) ($perfil?->documento_verificado ?? false),
+                'created_at'           => $u->created_at ? $u->created_at->format('d M Y') : '15 Sep 2026',
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'total'  => $formatted->count(),
+            'data'   => $formatted,
         ]);
     }
 }

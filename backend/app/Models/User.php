@@ -2,27 +2,48 @@
 
 namespace App\Models;
 
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     use HasApiTokens, Notifiable;
 
     protected $primaryKey = 'id_usuario';
 
     protected $fillable = [
-        'id_rol', 'nombres', 'correo', 'clave_hash', 'estado',
+        'id_rol', 'nombres', 'correo', 'clave_hash', 'estado', 'email_verified_at',
     ];
 
     protected $hidden = [
         'clave_hash', 'remember_token',
     ];
 
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+    ];
+
     public function getAuthPassword()
     {
         return $this->clave_hash;
+    }
+
+    /**
+     * Devuelve el correo electrónico utilizado para la verificación de cuenta.
+     */
+    public function getEmailForVerification()
+    {
+        return $this->correo;
+    }
+
+    /**
+     * Enruta las notificaciones por correo (VerifyEmail) hacia la columna correo.
+     */
+    public function routeNotificationForMail($notification = null)
+    {
+        return $this->correo;
     }
 
     public function rol()

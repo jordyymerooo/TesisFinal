@@ -14,12 +14,21 @@ class Inmueble extends Model
     protected $fillable = [
         'id_arrendador', 'titulo', 'descripcion', 'precio', 'tipo',
         'estado', 'capacidad', 'servicios_incluidos', 'calificacion_promedio',
+        'normas',
     ];
+
+    protected $appends = ['precio_mensual'];
 
     protected $casts = [
         'precio' => 'decimal:2',
+        'precio_mensual' => 'decimal:2',
         'servicios_incluidos' => 'boolean',
     ];
+
+    public function getPrecioMensualAttribute()
+    {
+        return $this->precio;
+    }
 
     public function arrendador()
     {
@@ -54,5 +63,10 @@ class Inmueble extends Model
     public function usuariosFavoritos()
     {
         return $this->belongsToMany(User::class, 'favoritos', 'id_inmueble', 'id_usuario')->withTimestamps();
+    }
+
+    public function servicios()
+    {
+        return $this->belongsToMany(Servicio::class, 'inmueble_servicio', 'id_inmueble', 'id_servicio')->withTimestamps();
     }
 }
