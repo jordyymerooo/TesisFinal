@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -356,6 +357,85 @@ class UserController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => "Usuario {$nombre} y todos sus datos relacionados fueron eliminados exitosamente.",
+        ], 200);
+    }
+
+    /**
+     * POST /api/user/foto
+     * Actualiza la foto de perfil del usuario autenticado.
+     */
+    public function updateFoto(Request $request): JsonResponse
+    {
+        $request->validate([
+            'foto' => ['required', 'image', 'max:10240'], // hasta 10MB
+        ]);
+
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'No autenticado.'], 401);
+        }
+
+        // Eliminar foto anterior si existe en disco público
+        if ($user->foto_perfil && Storage::disk('public')->exists($user->foto_perfil)) {
+            Storage::disk('public')->delete($user->foto_perfil);
+        }
+
+        $path = $request->file('foto')->store('avatars', 'public');
+        $url  = asset("storage/{$path}");
+
+        $user->update(['foto_perfil' => $path]);
+
+        // Sincronizar también con la relación perfil
+        if ($user->perfil) {
+            $user->perfil->update(['foto_perfil_url' => $url]);
+        } else {
+            Perfil::create([
+                'id_usuario'      => $user->id_usuario,
+                'foto_perfil_url' => $url,
+            ]);
+        }
+
+        return response()->json([
+            'status'          => 'success',
+            'message'         => 'Foto de perfil actualizada exitosamente.',
+            'url'             => $url,
+            'foto_perfil_url' => $url,
+            'foto_perfil'     => $path,
+            'user'            => $user->fresh(['perfil', 'rol']),
+        ]);
+    }
+
+    /**
+     * DELETE /api/admin/usuarios/{id}/foto
+     * Elimina la foto de perfil del usuario especificado (moderación admin).
+     */
+    public function removeFotoAsAdmin($id): JsonResponse
+    {
+        $usuario = User::find($id);
+        if (!$usuario) {
+            return response()->json(['status' => 'error', 'message' => 'Usuario no encontrado.'], 404);
+        }
+
+        if ($usuario->foto_perfil) {
+            Storage::disk('public')->delete($usuario->foto_perfil);
+        }
+
+        if ($usuario->perfil) {
+            if ($usuario->perfil->foto_perfil_url) {
+                $rawPath = str_replace(asset('storage/'), '', $usuario->perfil->foto_perfil_url);
+                $rawPath = ltrim(str_replace('/storage/', '', $rawPath), '/');
+                if ($rawPath && Storage::disk('public')->exists($rawPath)) {
+                    Storage::disk('public')->delete($rawPath);
+                }
+            }
+            $usuario->perfil->update(['foto_perfil_url' => null]);
+        }
+
+        $usuario->update(['foto_perfil' => null]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Foto de perfil eliminada exitosamente.',
         ], 200);
     }
 }

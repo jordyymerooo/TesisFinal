@@ -141,6 +141,46 @@ class VerificacionController extends Controller
     }
 
     /**
+     * POST o PATCH /admin/verificaciones/{id}/rechazar
+     * Rechaza la documentación KYC del arrendador, registra la observación y envía el correo.
+     */
+    public function rechazar(Request $request, string $id)
+    {
+        $request->validate([
+            'observacion' => ['required', 'string', 'min:3'],
+        ]);
+
+        $usuario = \App\Models\User::where('id_usuario', $id)->orWhere('id', $id)->firstOrFail();
+
+        $usuario->update([
+            'estado_kyc'      => 'rechazado',
+            'kyc_observacion' => $request->observacion,
+        ]);
+
+        if ($usuario->perfil) {
+            $usuario->perfil->update([
+                'documento_verificado' => false,
+                'kyc_observacion'      => $request->observacion,
+            ]);
+        }
+
+        $emailDestino = $usuario->correo ?: $usuario->email;
+        try {
+            \Illuminate\Support\Facades\Mail::to($emailDestino)->send(
+                new \App\Mail\ArrendadorRechazadoMail($usuario, $request->observacion)
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("No se pudo enviar correo de rechazo a {$emailDestino}: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'status'   => 'success',
+            'message'  => 'Documentación rechazada y notificación enviada al arrendador.',
+            'usuario'  => $usuario->fresh(['rol', 'perfil']),
+        ]);
+    }
+
+    /**
      * DELETE — las verificaciones no se eliminan, quedan como registro histórico.
      */
     public function destroy(string $id)

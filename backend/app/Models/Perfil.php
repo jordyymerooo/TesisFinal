@@ -12,7 +12,7 @@ class Perfil extends Model
     protected $fillable = [
         'id_usuario', 'identificacion', 'telefono', 'foto_perfil_url', 'ciudad_origen',
         'documento_verificado', 'documento_tipo', 'documento_url',
-        'documento_posterior_url', 'recibo_luz_url',
+        'documento_posterior_url', 'recibo_luz_url', 'kyc_observacion',
     ];
 
     protected $casts = [

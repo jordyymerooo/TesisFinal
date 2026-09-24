@@ -1,5 +1,5 @@
-import React from 'react';
-import { LandlordVerification } from '../../services/api';
+import React, { useState, useEffect } from 'react';
+import api, { LandlordVerification } from '../../services/api';
 import {
   ShieldCheck,
   X,
@@ -107,6 +107,38 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
         PLACEHOLDER_IMG,
     },
   ];
+
+  const solicitud = selectedReview;
+  const [observacion, setObservacion] = useState(reviewNotes || '');
+  const [rejecting, setRejecting] = useState(false);
+
+  useEffect(() => {
+    if (reviewNotes !== undefined) {
+      setObservacion(reviewNotes);
+    }
+  }, [reviewNotes]);
+
+  const handleRechazar = async () => {
+    if (!observacion.trim()) {
+      alert('Debes escribir el motivo del rechazo en las Notas de Auditoría para que el arrendador sepa qué corregir.');
+      return;
+    }
+    const targetId = solicitud.usuario_id || solicitud.id;
+    setRejecting(true);
+    try {
+      await api.patch(`/admin/verificaciones/${targetId}/rechazar`, { observacion });
+      if (onReject) {
+        onReject(solicitud.nombres, typeof targetId === 'number' ? targetId : undefined);
+      }
+      onClose();
+    } catch (error: any) {
+      console.error('Error al rechazar documentación:', error);
+      const msg = error.response?.data?.message || 'Hubo un problema al rechazar los documentos.';
+      alert(msg);
+    } finally {
+      setRejecting(false);
+    }
+  };
 
   const handleAprobar = (id?: number | string) => {
     if (onApprove) {
@@ -406,12 +438,15 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
         >
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#4B5563', marginBottom: 4 }}>
-              Notas de Auditoría / Observaciones (Opcional):
+              Notas de Auditoría / Observaciones:
             </label>
             <textarea
-              value={reviewNotes}
-              onChange={(e) => setReviewNotes(e.target.value)}
-              placeholder="Ej. Cédula legible con fecha de expiración vigente. Dirección en Barbasquillo validada..."
+              value={observacion}
+              onChange={(e) => {
+                setObservacion(e.target.value);
+                if (setReviewNotes) setReviewNotes(e.target.value);
+              }}
+              placeholder="Ej. Cédula ilegible o borrosa. Por favor vuelve a subir una foto clara donde los datos sean nítidos..."
               rows={2}
               style={{
                 width: '100%',
@@ -428,78 +463,78 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex justify-end gap-3 w-full border-t pt-4 mt-4" style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, width: '100%', borderTop: '1px solid #E5E7EB', paddingTop: 16, marginTop: 16 }}>
             <button
-              onClick={() => onReject(selectedReview.nombres, selectedReview.id)}
-              disabled={approving}
+              onClick={onClose}
+              disabled={approving || rejecting}
+              className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md font-medium"
               style={{
+                padding: '8px 16px',
+                color: '#4B5563',
+                backgroundColor: '#F3F4F6',
+                borderRadius: 6,
+                fontWeight: 500,
+                fontSize: 13,
+                border: '1px solid #E5E7EB',
+                cursor: (approving || rejecting) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Revisar después
+            </button>
+            <button
+              onClick={handleRechazar}
+              disabled={approving || rejecting}
+              className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-md font-medium"
+              style={{
+                padding: '8px 16px',
+                color: '#FFFFFF',
+                backgroundColor: '#DC2626',
+                borderRadius: 6,
+                fontWeight: 500,
+                fontSize: 13,
+                border: 'none',
+                cursor: (approving || rejecting) ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                background: '#FEF2F2',
-                border: '1px solid #FECACA',
-                color: '#DC2626',
-                padding: '9px 18px',
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: approving ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s ease',
               }}
             >
-              <AlertTriangle size={15} />
-              <span>Rechazar Documentación</span>
+              {rejecting ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Rechazando...</span>
+                </>
+              ) : (
+                'Rechazar Documentos'
+              )}
             </button>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={onClose}
-                disabled={approving}
-                style={{
-                  background: '#FFFFFF',
-                  border: '1px solid #D1D5DB',
-                  color: '#4B5563',
-                  padding: '9px 18px',
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: approving ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Cerrar
-              </button>
-
-              <button
-                onClick={() => handleAprobar(selectedReview.usuario_id || selectedReview.id)}
-                disabled={approving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: '#059669',
-                  border: 'none',
-                  color: '#FFFFFF',
-                  padding: '9px 22px',
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: approving ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 2px 8px rgba(5,150,105,0.35)',
-                }}
-              >
-                {approving ? (
-                  <>
-                    <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>Aprobando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check size={15} />
-                    <span>Aprobar y Habilitar Arrendador</span>
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              onClick={handleAprobar}
+              disabled={approving || rejecting}
+              className="px-4 py-2 text-white bg-emerald-500 hover:bg-emerald-600 rounded-md font-medium flex items-center gap-2"
+              style={{
+                padding: '8px 16px',
+                color: '#FFFFFF',
+                backgroundColor: '#10B981',
+                borderRadius: 6,
+                fontWeight: 500,
+                fontSize: 13,
+                border: 'none',
+                cursor: (approving || rejecting) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {approving ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Aprobando...</span>
+                </>
+              ) : (
+                '✓ Aprobar'
+              )}
+            </button>
           </div>
         </div>
       </div>

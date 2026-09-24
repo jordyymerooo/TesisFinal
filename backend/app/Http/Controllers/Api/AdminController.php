@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AdminController extends Controller
 {
@@ -334,6 +335,85 @@ class AdminController extends Controller
             'status' => 'success',
             'total'  => $formatted->count(),
             'data'   => $formatted,
+        ]);
+    }
+
+    /**
+     * GET /api/admin/moderacion/fotos
+     * Retorna usuarios con foto de perfil para moderación.
+     */
+    public function getFotosPerfil(): JsonResponse
+    {
+        $usuarios = User::whereNotNull('foto_perfil')
+            ->orWhereHas('perfil', function ($q) {
+                $q->whereNotNull('foto_perfil_url')->where('foto_perfil_url', '!=', '');
+            })
+            ->with(['perfil', 'rol'])
+            ->orderByDesc('id_usuario')
+            ->get();
+
+        $formatted = $usuarios->map(function ($u) {
+            $perfil = $u->perfil;
+            $fotoOriginal = $u->foto_perfil ?? $perfil?->foto_perfil_url;
+            $fotoUrl = $u->foto_url ?? $u->foto_perfil_url;
+
+            if (!$fotoUrl && $fotoOriginal) {
+                if (str_starts_with($fotoOriginal, 'http://') || str_starts_with($fotoOriginal, 'https://')) {
+                    $fotoUrl = $fotoOriginal;
+                } else {
+                    $cleaned = ltrim(str_replace('storage/', '', $fotoOriginal), '/');
+                    $fotoUrl = asset('storage/' . $cleaned);
+                }
+            }
+
+            return [
+                'id'          => $u->id_usuario,
+                'id_usuario'  => $u->id_usuario,
+                'nombres'     => $u->nombres,
+                'correo'      => $u->correo,
+                'rol'         => $u->rol?->nombre ?? ($u->id_rol === 2 ? 'Arrendador' : 'Estudiante'),
+                'foto_perfil' => $u->foto_perfil,
+                'foto_url'    => $fotoUrl,
+                'avatar'      => $fotoUrl,
+                'created_at'  => $u->created_at ? $u->created_at->format('d/m/Y H:i') : null,
+            ];
+        })->filter(function ($item) {
+            return !empty($item['foto_url']);
+        })->values();
+
+        return response()->json([
+            'status' => 'success',
+            'total'  => $formatted->count(),
+            'data'   => $formatted,
+        ]);
+    }
+
+    /**
+     * DELETE /api/admin/moderacion/fotos/{id}
+     * Elimina la foto de perfil del usuario por moderación.
+     */
+    public function deleteFotoPerfil(string $id): JsonResponse
+    {
+        $user = User::where('id_usuario', $id)->orWhere('id', $id)->firstOrFail();
+
+        // Eliminar archivo en storage si existe
+        if ($user->foto_perfil && Storage::disk('public')->exists($user->foto_perfil)) {
+            Storage::disk('public')->delete($user->foto_perfil);
+        }
+
+        if ($user->perfil && $user->perfil->foto_perfil_url) {
+            $localPath = ltrim(str_replace(['storage/', asset('storage/')], '', $user->perfil->foto_perfil_url), '/');
+            if (Storage::disk('public')->exists($localPath)) {
+                Storage::disk('public')->delete($localPath);
+            }
+            $user->perfil->update(['foto_perfil_url' => null]);
+        }
+
+        $user->update(['foto_perfil' => null]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => "Foto de perfil del usuario {$user->nombres} eliminada exitosamente.",
         ]);
     }
 }

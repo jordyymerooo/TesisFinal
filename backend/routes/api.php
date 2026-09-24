@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\UbicacionController;
 use App\Http\Controllers\Api\KYCController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
+use App\Http\Controllers\Api\PasswordResetController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -74,15 +75,36 @@ Route::prefix('v1/auth')->group(function () {
 });
 
 // ─────────────────────────────────────────────
+// RECUPERACIÓN DE CONTRASEÑA VÍA PIN NUMÉRICO (API)
+// ─────────────────────────────────────────────
+Route::post('/password/email', [PasswordResetController::class, 'sendPin']);
+Route::post('/password/verify-pin', [PasswordResetController::class, 'verifyPin']);
+Route::post('/password/reset', [PasswordResetController::class, 'resetPassword']);
+
+Route::prefix('v1/password')->group(function () {
+    Route::post('/email', [PasswordResetController::class, 'sendPin']);
+    Route::post('/verify-pin', [PasswordResetController::class, 'verifyPin']);
+    Route::post('/reset', [PasswordResetController::class, 'resetPassword']);
+});
+Route::prefix('v1/auth/password')->group(function () {
+    Route::post('/email', [PasswordResetController::class, 'sendPin']);
+    Route::post('/verify-pin', [PasswordResetController::class, 'verifyPin']);
+    Route::post('/reset', [PasswordResetController::class, 'resetPassword']);
+});
+
+// ─────────────────────────────────────────────
 // RUTAS SOLO CON LOGIN (Se permite subir KYC aunque no tenga el email verificado)
 // ─────────────────────────────────────────────
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/kyc/documentos', [KYCController::class, 'upload']);
     Route::get('/user', function (Request $request) { return $request->user()->load('rol', 'perfil'); });
+    Route::post('/user/foto', [UserController::class, 'updateFoto']);
+    Route::post('/v1/user/foto', [UserController::class, 'updateFoto']);
 });
 
 Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/kyc/documentos', [KYCController::class, 'upload']);
+    Route::post('/user/foto', [UserController::class, 'updateFoto']);
 });
 
 // RUTAS ESTRICTAS (Email verificado + KYC aprobado)
@@ -185,6 +207,10 @@ Route::prefix('v1/admin')->group(function () {
     Route::post('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
     Route::patch('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar'])->name('admin.verificaciones.aprobar');
     Route::post('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
+    Route::patch('/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar'])->name('admin.verificaciones.rechazar');
+    Route::post('/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+    Route::patch('/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar'])->name('admin.arrendadores.rechazar');
+    Route::post('/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
 
     // Auditoría de Mensajes y Conversaciones
     Route::get('/chats', [ChatController::class, 'adminIndex'])->name('admin.chats.index');
@@ -364,11 +390,23 @@ Route::prefix('admin')->group(function () {
 
 Route::post('/admin/usuarios', [UserController::class, 'storeAsAdmin']);
 Route::delete('/admin/usuarios/{id}', [UserController::class, 'destroy']);
+Route::delete('/admin/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
+Route::delete('/v1/admin/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
 Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification']);
 Route::patch('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
 Route::post('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
 Route::patch('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
 Route::post('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
+Route::patch('/admin/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+Route::post('/admin/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+Route::patch('/admin/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+Route::post('/admin/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+
+// Moderación de fotos de perfil
+Route::get('/admin/moderacion/fotos', [AdminController::class, 'getFotosPerfil']);
+Route::delete('/admin/moderacion/fotos/{id}', [AdminController::class, 'deleteFotoPerfil']);
+Route::get('/v1/admin/moderacion/fotos', [AdminController::class, 'getFotosPerfil']);
+Route::delete('/v1/admin/moderacion/fotos/{id}', [AdminController::class, 'deleteFotoPerfil']);
 
 // Endpoint móvil para listar notificaciones del usuario
 Route::get('/v1/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('v1.mis-notificaciones');

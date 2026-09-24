@@ -32,6 +32,7 @@ export interface UserItem {
   correo: string;
   avatar?: string;
   foto_url?: string | null;
+  foto_perfil?: string | null;
   cedula?: string;
   rol: string;
   estado: string;
@@ -99,7 +100,16 @@ export function Usuarios() {
   }, []);
 
   const handleOpenEditModal = (user: UserItem) => {
-    setUserToEdit(user);
+    const fotoUrl =
+      user.foto_url ||
+      (user.avatar && !user.avatar.includes('ui-avatars.com') ? user.avatar : null) ||
+      (user as any).foto_perfil ||
+      null;
+
+    setUserToEdit({
+      ...user,
+      foto_url: fotoUrl,
+    });
     setEditNombres(user.nombres || '');
     setEditCorreo(user.correo || '');
     setEditTelefono(user.telefono || '');
@@ -207,6 +217,28 @@ export function Usuarios() {
       alert(msg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRemovePhoto = async (id?: number) => {
+    const targetId = id || userToEdit?.id || userToEdit?.id_usuario;
+    if (!targetId) return;
+
+    if (!window.confirm('¿Seguro que deseas eliminar la foto de perfil de este usuario?')) return;
+
+    try {
+      await api.delete(`/admin/usuarios/${targetId}/foto`);
+      // Actualizar el estado local del modal para que la foto desaparezca al instante
+      if (userToEdit) {
+        setUserToEdit({ ...userToEdit, foto_url: null, avatar: undefined });
+      }
+      setSuccessAlert('✓ Foto de perfil eliminada correctamente.');
+      setTimeout(() => setSuccessAlert(null), 4000);
+      // Refrescar la tabla de fondo
+      await fetchUsuarios();
+    } catch (error) {
+      console.error('Error eliminando foto', error);
+      alert('Hubo un error al eliminar la foto de perfil.');
     }
   };
 
@@ -967,6 +999,85 @@ export function Usuarios() {
 
             {/* Form Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* --- INICIO BLOQUE FOTO DE PERFIL --- */}
+              <div
+                className="flex flex-col items-center mb-6"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  marginBottom: 20,
+                  width: '100%',
+                }}
+              >
+                {userToEdit?.foto_url ? (
+                  <>
+                    <img
+                      src={userToEdit.foto_url}
+                      alt="Perfil"
+                      className="w-24 h-24 rounded-full object-cover mb-2 border border-gray-200 shadow-sm"
+                      style={{
+                        width: 96,
+                        height: 96,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        marginBottom: 8,
+                        border: '1px solid #E5E7EB',
+                        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                      }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://ui-avatars.com/api/?name=' +
+                          encodeURIComponent(userToEdit.nombres || 'U') +
+                          '&background=8C1515&color=fff&size=128';
+                      }}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => handleRemovePhoto(userToEdit.id || userToEdit.id_usuario)} 
+                      className="text-xs text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded hover:bg-red-50 transition-colors"
+                      style={{
+                        fontSize: 12,
+                        color: '#DC2626',
+                        fontWeight: 600,
+                        padding: '4px 12px',
+                        borderRadius: 4,
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                    >
+                      Eliminar foto actual
+                    </button>
+                  </>
+                ) : (
+                  <div
+                    className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center mb-2 border border-slate-200 shadow-sm"
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: '50%',
+                      background: '#F1F5F9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 8,
+                      border: '1px solid #E2E8F0',
+                      boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    }}
+                  >
+                    <span
+                      className="text-slate-400 text-xs font-medium"
+                      style={{ color: '#94A3B8', fontSize: 12, fontWeight: 500 }}
+                    >
+                      Sin foto
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* --- FIN BLOQUE FOTO DE PERFIL --- */}
+
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6 }}>
                   Nombre Completo
