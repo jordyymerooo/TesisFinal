@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\KYCController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
 use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\ReporteController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -100,11 +101,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/user', function (Request $request) { return $request->user()->load('rol', 'perfil'); });
     Route::post('/user/foto', [UserController::class, 'updateFoto']);
     Route::post('/v1/user/foto', [UserController::class, 'updateFoto']);
+    // Registro de Expo Push Token para notificaciones push
+    Route::post('/user/push-token', [UserController::class, 'registerPushToken']);
 });
 
 Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/kyc/documentos', [KYCController::class, 'upload']);
     Route::post('/user/foto', [UserController::class, 'updateFoto']);
+    // Registro de Expo Push Token (prefijo v1)
+    Route::post('/user/push-token', [UserController::class, 'registerPushToken']);
 });
 
 // RUTAS ESTRICTAS (Email verificado + KYC aprobado)
@@ -411,4 +416,18 @@ Route::delete('/v1/admin/moderacion/fotos/{id}', [AdminController::class, 'delet
 // Endpoint móvil para listar notificaciones del usuario
 Route::get('/v1/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('v1.mis-notificaciones');
 Route::get('/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('mis-notificaciones');
+
+// ─────────────────────────────────────────────
+// SISTEMA DE REPORTES Y DENUNCIAS
+// ─────────────────────────────────────────────
+Route::post('/reportes', [ReporteController::class, 'store'])->middleware('auth:sanctum');
+Route::post('/v1/reportes', [ReporteController::class, 'store'])->middleware('auth:sanctum');
+
+Route::get('/admin/reportes', [ReporteController::class, 'index'])->middleware(['auth:sanctum', 'admin']);
+Route::get('/v1/admin/reportes', [ReporteController::class, 'index'])->middleware(['auth:sanctum', 'admin']);
+
+Route::patch('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
+Route::post('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
+Route::patch('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
+Route::post('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
 

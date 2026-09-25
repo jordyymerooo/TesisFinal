@@ -40,6 +40,11 @@ class Inmueble extends Model
         return $this->hasMany(Fotografia::class, 'id_inmueble', 'id_inmueble');
     }
 
+    public function fotos()
+    {
+        return $this->fotografias();
+    }
+
     public function ubicacion()
     {
         return $this->hasOne(Ubicacion::class, 'id_inmueble', 'id_inmueble');

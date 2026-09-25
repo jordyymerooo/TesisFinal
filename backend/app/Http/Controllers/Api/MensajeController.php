@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Mensaje;
 use App\Models\User;
+use App\Services\ExpoNotificationService;
 use Illuminate\Http\Request;
 
 class MensajeController extends Controller
@@ -161,6 +162,33 @@ class MensajeController extends Controller
             'leido'           => false,
             'fecha'           => now(),
         ]);
+
+        // ── Notificación Push al Destinatario ──────────────────────────────
+        try {
+            $destinatario = User::find($data['id_destinatario']);
+            if ($destinatario && !empty($destinatario->expo_push_token)) {
+                $senderName  = $user->nombres ?? 'Alguien';
+                $msgPreview  = mb_strlen($data['contenido']) > 80
+                    ? mb_substr($data['contenido'], 0, 77) . '...'
+                    : $data['contenido'];
+
+                ExpoNotificationService::send(
+                    $destinatario->expo_push_token,
+                    "💬 {$senderName}",
+                    $msgPreview,
+                    [
+                        'screen'    => 'ChatRoom',
+                        'userId'    => $user->id_usuario,
+                        'userName'  => $senderName,
+                        'inmuebleId'=> $data['id_inmueble'] ?? null,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Tolerancia a fallos: el mensaje ya fue guardado, la notificación es best-effort
+            \Log::warning('[MensajeController] Error enviando push: ' . $e->getMessage());
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         return response()->json([
             'message' => 'Mensaje enviado.',

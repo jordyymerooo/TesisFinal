@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronRight,
   ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -22,6 +23,7 @@ export function AdminLayout() {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
 
   const fetchPendingCount = async () => {
     try {
@@ -33,16 +35,31 @@ export function AdminLayout() {
     }
   };
 
+  const fetchPendingReportsCount = async () => {
+    try {
+      const res = await api.get('/admin/reportes');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      const count = list.filter((r: any) => r.estado === 'pendiente').length;
+      setPendingReportsCount(count);
+    } catch (err) {
+      console.warn('[AdminLayout] Error al obtener denuncias pendientes:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPendingCount();
+    fetchPendingReportsCount();
 
     const handleUpdate = () => {
       fetchPendingCount();
+      fetchPendingReportsCount();
     };
 
     window.addEventListener('verification-updated', handleUpdate);
+    window.addEventListener('reportes-updated', handleUpdate);
     return () => {
       window.removeEventListener('verification-updated', handleUpdate);
+      window.removeEventListener('reportes-updated', handleUpdate);
     };
   }, [location.pathname]);
 
@@ -50,6 +67,7 @@ export function AdminLayout() {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/usuarios', label: 'Usuarios', icon: Users },
     { path: '/verificacion', label: 'Verificación', icon: ShieldCheck, isVerification: true },
+    { path: '/denuncias', label: 'Denuncias', icon: AlertTriangle, isDenuncias: true },
     { path: '/auditoria-chats', label: 'Auditoría de Chats', icon: MessageSquare },
     { path: '/propiedades', label: 'Propiedades', icon: Building2 },
     { path: '/reportes', label: 'Reportes', icon: BarChart3 },
@@ -144,6 +162,21 @@ export function AdminLayout() {
                       }}
                     >
                       {pendingCount}
+                    </span>
+                  )
+                ) : item.isDenuncias ? (
+                  pendingReportsCount > 0 && (
+                    <span
+                      style={{
+                        background: isActive ? 'rgba(255,255,255,0.25)' : '#EF4444',
+                        color: '#FFFFFF',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: 10,
+                      }}
+                    >
+                      {pendingReportsCount}
                     </span>
                   )
                 ) : (

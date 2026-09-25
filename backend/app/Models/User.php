@@ -15,7 +15,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $fillable = [
         'id_rol', 'nombres', 'correo', 'foto_perfil', 'clave_hash', 'password', 'estado', 'email_verified_at',
-        'estado_kyc', 'kyc_observacion',
+        'estado_kyc', 'kyc_observacion', 'expo_push_token',
     ];
 
     protected $hidden = [

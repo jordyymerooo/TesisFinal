@@ -14,6 +14,7 @@ class InmuebleController extends Controller
     /**
      * GET /api/v1/inmuebles
      * Lista inmuebles publicados (público) o todos los propios (arrendador).
+     * Paginado a 10 elementos por página con soporte de filtros.
      */
     public function index(Request $request)
     {
@@ -21,17 +22,43 @@ class InmuebleController extends Controller
 
         // Arrendador: ve solo sus inmuebles (todos los estados)
         if ($user && $user->esArrendador()) {
-            $inmuebles = Inmueble::where('id_arrendador', auth()->id() ?? $user->id_usuario)
-                ->with(['ubicacion', 'fotografias'])
-                ->paginate(15);
+            $query = Inmueble::where('id_arrendador', auth()->id() ?? $user->id_usuario)
+                ->with(['ubicacion', 'fotografias', 'arrendador']);
+
+            $perPage = (int) $request->input('per_page', 10);
+            $inmuebles = $query->latest()->paginate($perPage);
 
             return response()->json($inmuebles);
         }
 
-        // Estudiante / público: solo inmuebles disponibles (publicados y no ocupados)
-        $inmuebles = Inmueble::whereIn('estado', ['disponible', 'publicado'])
-            ->with(['ubicacion', 'fotografias'])
-            ->paginate(15);
+        // Estudiante / público: solo inmuebles disponibles y aprobados
+        $query = Inmueble::with(['arrendador', 'fotografias', 'ubicacion'])
+            ->whereIn('estado', ['disponible', 'publicado', 'aprobado', 'activa']);
+
+        // Filtro por tipo si se envía
+        if ($request->filled('tipo') && $request->input('tipo') !== 'Todos') {
+            $query->where('tipo', $request->input('tipo'));
+        }
+
+        // Filtro por rango de precio
+        if ($request->filled('precio_min')) {
+            $query->where('precio', '>=', (float) $request->input('precio_min'));
+        }
+        if ($request->filled('precio_max')) {
+            $query->where('precio', '<=', (float) $request->input('precio_max'));
+        }
+
+        // Filtro por término de búsqueda (título o descripción)
+        if ($request->filled('search') || $request->filled('q')) {
+            $search = $request->input('search') ?? $request->input('q');
+            $query->where(function ($q) use ($search) {
+                $q->where('titulo', 'ilike', "%{$search}%")
+                  ->orWhere('descripcion', 'ilike', "%{$search}%");
+            });
+        }
+
+        $perPage = (int) $request->input('per_page', 10);
+        $inmuebles = $query->latest()->paginate($perPage);
 
         return response()->json($inmuebles);
     }

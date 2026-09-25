@@ -15,6 +15,7 @@ import {
   Clock,
   ArrowUpRight,
   Printer,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -30,10 +31,12 @@ import {
   Cell,
 } from 'recharts';
 import { getAdminReportStats } from '../../services/api';
+import { Denuncias } from './Denuncias';
 
 const WINE = '#8C1515';
 
 export function Reportes() {
+  const [tabPrincipal, setTabPrincipal] = useState<'denuncias' | 'estadisticas'>('denuncias');
   const [fechaInicio, setFechaInicio] = useState<string>('2026-04-01');
   const [fechaFin, setFechaFin] = useState<string>('2026-09-30');
   const [tipoReporte, setTipoReporte] = useState<'usuarios' | 'inmuebles' | 'verificacion'>('inmuebles');
@@ -121,40 +124,91 @@ export function Reportes() {
   };
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Paso 3: Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: '#FEF2F2',
-                border: '1px solid #FEE2E2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <BarChart3 size={20} color={WINE} />
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#111827', letterSpacing: '-0.4px' }}>
-                Reportes y Analítica
-              </h1>
-              <p style={{ margin: '2px 0 0', fontSize: 13, color: '#6B7280' }}>
-                Generación de informes y estadísticas de la plataforma
-              </p>
-            </div>
-          </div>
-        </div>
+    <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* ── Selector de Pestañas de Reportes ── */}
+      <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #E5E7EB', paddingBottom: 14 }}>
+        <button
+          onClick={() => setTabPrincipal('denuncias')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '9px 18px',
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: tabPrincipal === 'denuncias' ? `1px solid ${WINE}` : '1px solid #E5E7EB',
+            background: tabPrincipal === 'denuncias' ? WINE : '#FFFFFF',
+            color: tabPrincipal === 'denuncias' ? '#FFFFFF' : '#4B5563',
+            boxShadow: tabPrincipal === 'denuncias' ? `0 2px 6px ${WINE}30` : 'none',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <ShieldAlert size={16} />
+          Denuncias de Inmuebles
+        </button>
 
         <button
-          onClick={fetchStats}
-          disabled={loading}
+          onClick={() => setTabPrincipal('estadisticas')}
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '9px 18px',
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: tabPrincipal === 'estadisticas' ? `1px solid ${WINE}` : '1px solid #E5E7EB',
+            background: tabPrincipal === 'estadisticas' ? WINE : '#FFFFFF',
+            color: tabPrincipal === 'estadisticas' ? '#FFFFFF' : '#4B5563',
+            boxShadow: tabPrincipal === 'estadisticas' ? `0 2px 6px ${WINE}30` : 'none',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <BarChart3 size={16} />
+          Métricas y Estadísticas
+        </button>
+      </div>
+
+      {tabPrincipal === 'denuncias' ? (
+        <Denuncias />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* ── Paso 3: Header ── */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: '#FEF2F2',
+                    border: '1px solid #FEE2E2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <BarChart3 size={20} color={WINE} />
+                </div>
+                <div>
+                  <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#111827', letterSpacing: '-0.4px' }}>
+                    Reportes y Analítica
+                  </h1>
+                  <p style={{ margin: '2px 0 0', fontSize: 13, color: '#6B7280' }}>
+                    Generación de informes y estadísticas de la plataforma
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={fetchStats}
+              disabled={loading}
+              style={{
             display: 'flex',
             alignItems: 'center',
             gap: 6,
@@ -603,6 +657,8 @@ export function Reportes() {
           </table>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }

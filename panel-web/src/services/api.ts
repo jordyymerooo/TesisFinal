@@ -292,6 +292,24 @@ export const getAdminReportStats = async () => {
   return res.data?.data || res.data;
 };
 
+/**
+ * Obtener listado de denuncias / reportes de estudiantes
+ * GET /api/v1/admin/reportes
+ */
+export const getAdminReportes = async () => {
+  const res = await api.get('/admin/reportes');
+  return res.data?.data || (Array.isArray(res.data) ? res.data : []);
+};
+
+/**
+ * Resolver o descartar un reporte
+ * PATCH /api/v1/admin/reportes/{id}/estado
+ */
+export const updateReporteEstado = async (id: number | string, estado: 'resuelto' | 'descartado' | 'pendiente') => {
+  const res = await api.patch(`/admin/reportes/${id}/estado`, { estado });
+  return res.data;
+};
+
 export default api;
 
 

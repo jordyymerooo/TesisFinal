@@ -7,6 +7,7 @@ import Verificacion from './pages/admin/Verificacion';
 import { PropertiesApproval } from './pages/admin/PropertiesApproval';
 import AuditoriaChats from './pages/admin/AuditoriaChats';
 import Reportes from './pages/admin/Reportes';
+import Denuncias from './pages/admin/Denuncias';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="usuarios" element={<Usuarios />} />
           <Route path="verificacion" element={<Verificacion />} />
+          <Route path="denuncias" element={<Denuncias />} />
           <Route path="auditoria-chats" element={<AuditoriaChats />} />
           <Route path="propiedades" element={<PropertiesApproval />} />
           <Route path="reportes" element={<Reportes />} />

@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Alias de middleware de roles y verificación: ->middleware('role:arrendador'), ->middleware('verified')
         $middleware->alias([
             'role'     => \App\Http\Middleware\CheckRole::class,
+            'admin'    => \App\Http\Middleware\EnsureUserIsAdmin::class,
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
     })

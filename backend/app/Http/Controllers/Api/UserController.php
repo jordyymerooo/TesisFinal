@@ -438,5 +438,27 @@ class UserController extends Controller
             'message' => 'Foto de perfil eliminada exitosamente.',
         ], 200);
     }
+
+    /**
+     * POST /api/v1/user/push-token
+     * Guarda o actualiza el Expo Push Token del usuario autenticado.
+     * Se llama desde la app al iniciar sesión o al obtener un nuevo token.
+     */
+    public function registerPushToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'expo_push_token' => ['required', 'string', 'max:200'],
+        ]);
+
+        $user = $request->user();
+        $user->update(['expo_push_token' => $request->input('expo_push_token')]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Token de notificaciones registrado correctamente.',
+        ], 200);
+    }
 }
+
+
 
