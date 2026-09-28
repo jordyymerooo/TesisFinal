@@ -8,12 +8,23 @@ import { PropertiesApproval } from './pages/admin/PropertiesApproval';
 import AuditoriaChats from './pages/admin/AuditoriaChats';
 import Reportes from './pages/admin/Reportes';
 import Denuncias from './pages/admin/Denuncias';
+import Avisos from './pages/admin/Avisos';
+import Login from './pages/Login';
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('token') || localStorage.getItem('uleam_auth_token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AdminLayout />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="usuarios" element={<Usuarios />} />
           <Route path="verificacion" element={<Verificacion />} />
@@ -21,6 +32,7 @@ export default function App() {
           <Route path="auditoria-chats" element={<AuditoriaChats />} />
           <Route path="propiedades" element={<PropertiesApproval />} />
           <Route path="reportes" element={<Reportes />} />
+          <Route path="avisos" element={<Avisos />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

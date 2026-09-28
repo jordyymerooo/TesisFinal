@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ExternalLink,
   AlertTriangle,
+  Megaphone,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -71,6 +72,7 @@ export function AdminLayout() {
     { path: '/auditoria-chats', label: 'Auditoría de Chats', icon: MessageSquare },
     { path: '/propiedades', label: 'Propiedades', icon: Building2 },
     { path: '/reportes', label: 'Reportes', icon: BarChart3 },
+    { path: '/avisos', label: 'Gestión de Avisos', icon: Megaphone },
   ];
 
   return (

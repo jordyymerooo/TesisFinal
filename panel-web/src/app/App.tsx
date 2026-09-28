@@ -11,7 +11,7 @@ import { LandlordPublishFlow } from "./components/LandlordPublishFlow";
 import { LandlordVerificationScreen } from "./components/LandlordVerificationScreen";
 import { PropertyPublishStep1Screen } from "./components/PropertyPublishStep1Screen";
 import { PropertyPublishStep2Screen } from "./components/PropertyPublishStep2Screen";
-import { AuthModule } from "./components/AuthModule";
+
 import { StudentMapModule } from "./components/StudentMapModule";
 import { LandlordMobileModule } from "./components/LandlordMobileModule";
 import { AdminExtendedModule } from "./components/AdminExtendedModule";
@@ -340,7 +340,7 @@ export default function App() {
         {activeTab === "auth" && (
           <div>
             <SectionHeader number="05" title="Módulo 1 · Autenticación" subtitle="Login · Recuperación de contraseña · Ajustes de cuenta · App Móvil" />
-            <AuthModule />
+
           </div>
         )}
 

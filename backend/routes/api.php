@@ -110,6 +110,11 @@ Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/user/foto', [UserController::class, 'updateFoto']);
     // Registro de Expo Push Token (prefijo v1)
     Route::post('/user/push-token', [UserController::class, 'registerPushToken']);
+
+    // Avisos
+    Route::get('/avisos/admin', [\App\Http\Controllers\AvisoController::class, 'indexAdmin']);
+    Route::post('/avisos', [\App\Http\Controllers\AvisoController::class, 'store']);
+    Route::get('/avisos', [\App\Http\Controllers\AvisoController::class, 'indexMobile']);
 });
 
 // RUTAS ESTRICTAS (Email verificado + KYC aprobado)
@@ -196,6 +201,7 @@ Route::prefix('v1/admin')->group(function () {
     Route::get('/usuarios', [AdminController::class, 'usuarios'])->name('admin.usuarios');
     Route::get('/users', [AdminController::class, 'usuarios'])->name('admin.users');
     Route::post('/usuarios', [UserController::class, 'storeAsAdmin'])->name('admin.usuarios.store');
+    Route::post('/usuarios/{id}/reset-password', [UserController::class, 'resetPassword'])->name('admin.usuarios.resetPassword');
     Route::patch('/usuarios/{id}/estado', [UserController::class, 'toggleStatus'])->name('admin.usuarios.toggleStatus');
     Route::post('/usuarios/{id}/estado', [UserController::class, 'toggleStatus']);
     Route::put('/usuarios/{id}', [UserController::class, 'updateAsAdmin'])->name('admin.usuarios.update');
@@ -246,12 +252,15 @@ Route::prefix('v1/admin')->group(function () {
             return [
                 'id'          => $inm->id_inmueble,
                 'titulo'      => $inm->titulo,
+                'descripcion' => $inm->descripcion,
+                'reglas'      => $inm->normas,
                 'precio'      => (float) $inm->precio,
                 'tipo'        => $inm->tipo,
                 'estado'      => $inm->estado,
                 'fecha'       => $inm->created_at ? $inm->created_at->format('d M Y, H:i') : '15 Sep 2026',
                 'direccion'   => $ub ? trim(($ub->sector ? $ub->sector . ', ' : '') . ($ub->direccion_referencial ?? 'Manta')) : 'Manta, Manabí',
                 'foto_url'    => $foto?->url ?? 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=400&q=80',
+                'fotos'       => $inm->fotografias->map(function($f) { return ['id' => $f->id_fotografia, 'url' => $f->url]; })->toArray(),
                 'arrendador'  => [
                     'id'       => $arr?->id_usuario ?? 0,
                     'nombres'  => $arr?->nombres ?? 'Carlos Mendoza Bravo',

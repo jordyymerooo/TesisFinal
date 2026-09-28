@@ -47,6 +47,12 @@ api.interceptors.response.use(
     if (error.response) {
       if (error.response.status === 401) {
         console.warn('[API Sanctum] Sesión no autenticada o token expirado (401)');
+        localStorage.removeItem('uleam_auth_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('sanctum_token');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       } else if (error.response.status === 403) {
         console.warn('[API Sanctum] Acceso denegado: se requiere rol de Administrador (403)');
       }
@@ -80,12 +86,15 @@ export const getAuthToken = (): string | null => {
 export interface PendingProperty {
   id: number;
   titulo: string;
+  descripcion?: string;
+  reglas?: string;
   precio: number;
   tipo: string;
   estado: string;
   fecha: string;
   direccion: string;
   foto_url: string;
+  fotos?: { id: number; url: string }[];
   arrendador: {
     id: number;
     nombres: string;

@@ -114,6 +114,10 @@ export function PropertiesApproval() {
     }
   };
 
+  if (selectedProperty) {
+    console.log('[PropertiesApproval] Propiedad seleccionada:', selectedProperty);
+  }
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       {/* ── Notificación Toast Flotante ── */}
@@ -155,22 +159,6 @@ export function PropertiesApproval() {
       {/* ── Header Principal con Título y Contexto ULEAM ── */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span
-              style={{
-                backgroundColor: WINE_LIGHT,
-                color: WINE,
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-              }}
-            >
-              MÓDULO 4 · FIGMA
-            </span>
-            <span style={{ fontSize: 12, color: '#6B7280' }}>Gestión de Inmuebles Móviles</span>
-          </div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: 0 }}>
             Aprobación y Auditoría de Propiedades
           </h1>
@@ -202,92 +190,7 @@ export function PropertiesApproval() {
         </button>
       </div>
 
-      {/* ── Paso 1: Submenú Superior Tipo 'Tabs' ── */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 32,
-          borderBottom: '1px solid #E5E7EB',
-          marginBottom: 28,
-        }}
-      >
-        <button
-          onClick={() => setActiveTab('approval')}
-          style={{
-            padding: '12px 4px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'approval' ? `3px solid ${WINE}` : '3px solid transparent',
-            color: activeTab === 'approval' ? WINE : '#6B7280',
-            fontWeight: activeTab === 'approval' ? 800 : 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            transition: 'all 0.2s',
-          }}
-        >
-          <Building2 size={18} color={activeTab === 'approval' ? WINE : '#6B7280'} />
-          Aprobación de Propiedades
-          <span
-            style={{
-              backgroundColor: activeTab === 'approval' ? WINE : '#E5E7EB',
-              color: activeTab === 'approval' ? '#FFFFFF' : '#4B5563',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '2px 8px',
-              borderRadius: 12,
-            }}
-          >
-            {pendingCount}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('users')}
-          style={{
-            padding: '12px 4px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'users' ? `3px solid ${WINE}` : '3px solid transparent',
-            color: activeTab === 'users' ? WINE : '#6B7280',
-            fontWeight: activeTab === 'users' ? 800 : 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            transition: 'all 0.2s',
-          }}
-        >
-          <Users size={18} color={activeTab === 'users' ? WINE : '#6B7280'} />
-          Gestión de Usuarios
-        </button>
-
-        <button
-          onClick={() => setActiveTab('reports')}
-          style={{
-            padding: '12px 4px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'reports' ? `3px solid ${WINE}` : '3px solid transparent',
-            color: activeTab === 'reports' ? WINE : '#6B7280',
-            fontWeight: activeTab === 'reports' ? 800 : 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            transition: 'all 0.2s',
-          }}
-        >
-          <AlertTriangle size={18} color={activeTab === 'reports' ? WINE : '#6B7280'} />
-          Centro de Reportes
-        </button>
-      </div>
-
-      {/* ── Paso 1 (Continuación): Barra de Estadísticas Rápidas ── */}
+      {/* ── Paso 1: Barra de Estadísticas Rápidas ── */}
       <div
         style={{
           display: 'grid',
@@ -804,31 +707,37 @@ export function PropertiesApproval() {
               </button>
             </div>
 
-            {/* Contenido del Modal */}
-            <div style={{ padding: '24px' }}>
-              {/* Imagen Principal */}
-              <div style={{ position: 'relative', marginBottom: 18, borderRadius: 14, overflow: 'hidden' }}>
-                <img
-                  src={selectedProperty.foto_url}
-                  alt={selectedProperty.titulo}
-                  style={{ width: '100%', height: 200, objectFit: 'cover' }}
-                />
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 12,
-                    right: 12,
-                    backgroundColor: 'rgba(0,0,0,0.7)',
-                    backdropFilter: 'blur(6px)',
-                    color: '#FFFFFF',
-                    padding: '4px 10px',
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  ${selectedProperty.precio} / mes
-                </div>
+            {/* Contenido Scrolleable del Modal */}
+            <div className="overflow-y-auto max-h-[65vh] pr-2" style={{ padding: '24px 24px 0 24px' }}>
+              {/* Galería de Imágenes (Carousel) */}
+              <div className="flex overflow-x-auto snap-x gap-2 mb-4" style={{ paddingBottom: '8px' }}>
+                {selectedProperty.fotos && selectedProperty.fotos.length > 0 ? (
+                  selectedProperty.fotos.map((foto: any, index: number) => (
+                    <div key={foto.id || index} className="relative shrink-0 snap-center">
+                      <img
+                        src={foto.url || foto.foto_url}
+                        alt={`${selectedProperty.titulo} - Foto ${index + 1}`}
+                        className="w-64 h-40 object-cover rounded-lg"
+                      />
+                      {index === 0 && (
+                        <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white px-2 py-1 rounded-md text-xs font-bold">
+                          ${selectedProperty.precio} / mes
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="relative shrink-0 snap-center w-full">
+                    <img
+                      src={selectedProperty.foto_url}
+                      alt={selectedProperty.titulo}
+                      className="w-full h-40 object-cover rounded-lg"
+                    />
+                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white px-2 py-1 rounded-md text-xs font-bold">
+                      ${selectedProperty.precio} / mes
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Título y Dirección */}
@@ -910,6 +819,25 @@ export function PropertiesApproval() {
                 </div>
               </div>
 
+              {/* Descripción */}
+              <div className="mb-4">
+                <h5 className="font-bold text-gray-800 text-sm mb-1">📝 Descripción del Alojamiento</h5>
+                <p className="text-sm text-gray-600 whitespace-pre-line">
+                  {selectedProperty.descripcion || 'No especificado'}
+                </p>
+              </div>
+
+              {/* Reglas */}
+              <div className="mb-6">
+                <h5 className="font-bold text-gray-800 text-sm mb-1">⚖️ Reglas y Normativas</h5>
+                <p className="text-sm text-gray-600 whitespace-pre-line">
+                  {selectedProperty.reglas || 'No especificado'}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer Fijo con Botones de Acción */}
+            <div style={{ padding: '20px 24px', borderTop: '1px solid #E5E7EB', backgroundColor: '#FFFFFF' }}>
               {/* Pregunta de Confirmación */}
               <div
                 style={{
@@ -920,7 +848,7 @@ export function PropertiesApproval() {
                   fontSize: 13,
                   fontWeight: 600,
                   color: WINE,
-                  marginBottom: 20,
+                  marginBottom: 16,
                 }}
               >
                 ¿Deseas aprobar y publicar esta propiedad en el mapa móvil estudiantil?

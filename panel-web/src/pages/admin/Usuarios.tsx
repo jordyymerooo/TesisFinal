@@ -21,6 +21,8 @@ import {
   Megaphone,
   Send,
   Trash2,
+  Eye,
+  Key,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -80,6 +82,25 @@ export function Usuarios() {
     rol: 'estudiante',
   });
   const [isCreatingUser, setIsCreatingUser] = useState<boolean>(false);
+
+  // Estados del Modal de Detalles
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
+  const [selectedUserDetail, setSelectedUserDetail] = useState<UserItem | null>(null);
+  const [isResettingPwd, setIsResettingPwd] = useState<boolean>(false);
+
+  const handleResetPassword = async (userId: number) => {
+    if (!window.confirm('¿Estás seguro de generar una nueva contraseña temporal para este usuario?')) return;
+    setIsResettingPwd(true);
+    try {
+      const response = await api.post(`/admin/usuarios/${userId}/reset-password`);
+      window.alert(`¡Contraseña reseteada!\n\nNueva contraseña: ${response.data.temp_password}`);
+    } catch (error: any) {
+      console.error(error);
+      window.alert('Ocurrió un error al resetear la contraseña.');
+    } finally {
+      setIsResettingPwd(false);
+    }
+  };
 
   const fetchUsuarios = async () => {
     setLoading(true);
@@ -830,6 +851,28 @@ export function Usuarios() {
                       {/* Acciones */}
                       <td style={{ padding: '16px 24px', textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: 6 }}>
+                          {/* Botón Ver Detalles (Ojo) */}
+                          <button
+                            title="Ver Detalles"
+                            style={{
+                              background: '#EFF6FF',
+                              border: '1px solid #BFDBFE',
+                              borderRadius: 8,
+                              padding: '6px 10px',
+                              cursor: 'pointer',
+                              color: '#2563EB',
+                              transition: 'all 0.15s ease',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                            onClick={() => {
+                              setSelectedUserDetail(user);
+                              setIsDetailModalOpen(true);
+                            }}
+                          >
+                            <Eye size={13} />
+                          </button>
+
                           {/* Botón Editar (Lápiz) */}
                           <button
                             title="Editar usuario"
@@ -1585,6 +1628,134 @@ export function Usuarios() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Detalles de Usuario ── */}
+      {isDetailModalOpen && selectedUserDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 17, 23, 0.68)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: 20,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isResettingPwd) {
+              setIsDetailModalOpen(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 500,
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header del Modal */}
+            <div style={{ padding: '24px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Eye size={20} color="#2563EB" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#111827' }}>Detalles de Usuario</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6B7280' }}>Información completa y acciones de seguridad</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDetailModalOpen(false)}
+                disabled={isResettingPwd}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4, borderRadius: 6 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Cuerpo del Modal */}
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Nombre Completo</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.nombres}</div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Cédula</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.cedula || 'N/A'}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Correo Electrónico</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.correo}</div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Teléfono</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.telefono || 'N/A'}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Rol en el Sistema</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4, textTransform: 'capitalize' }}>{selectedUserDetail.rol}</div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Estado</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: selectedUserDetail.estado.toLowerCase() === 'activo' ? '#059669' : '#DC2626', marginTop: 4, textTransform: 'capitalize' }}>{selectedUserDetail.estado}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Fecha de Registro</label>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.created_at || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Botón de reset */}
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #F3F4F6' }}>
+                <button
+                  type="button"
+                  onClick={() => handleResetPassword(selectedUserDetail.id_usuario || selectedUserDetail.id!)}
+                  disabled={isResettingPwd}
+                  style={{
+                    width: '100%',
+                    background: '#FFF1F2',
+                    border: '1px solid #FECDD3',
+                    color: '#BE123C',
+                    padding: '12px',
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    cursor: isResettingPwd ? 'not-allowed' : 'pointer',
+                    opacity: isResettingPwd ? 0.7 : 1,
+                  }}
+                >
+                  {isResettingPwd ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Key size={18} />}
+                  <span>{isResettingPwd ? 'Generando...' : '🔑 Generar Credencial Temporal'}</span>
+                </button>
+                <p style={{ margin: '8px 0 0', fontSize: 11, color: '#6B7280', textAlign: 'center' }}>
+                  Esto enviará o generará una contraseña temporal de 8 caracteres que podrás compartirle al usuario.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BienvenidaUsuario;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -17,33 +19,32 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
+        // Se valida el rol antes para usarlo en la regla condicional
+        $idRol = (int) $request->input('id_rol');
+
+        $correoRules = ['required', 'email', 'max:150', 'unique:users,correo'];
+        if ($idRol === 1) {
+            $correoRules[] = 'regex:/^[a-zA-Z0-9._%+-]+@(live\.uleam\.edu\.ec|dn\.uleam\.edu\.ec|uleam\.edu\.ec)$/i';
+        }
+
         $data = $request->validate([
             'nombres'        => ['required', 'string', 'max:150'],
-            'correo'         => ['required', 'email', 'max:150', 'unique:users,correo'],
+            'correo'         => $correoRules,
             'clave'          => ['required', 'confirmed', Password::min(8)],
             'id_rol'         => ['required', 'integer', 'in:1,2'], // solo estudiante o arrendador
             'identificacion' => ['nullable', 'string', 'max:20'],
+            'telefono'       => ['nullable', 'string', 'max:15'],
+        ], [
+            'correo.regex' => 'Debes utilizar un correo institucional de la ULEAM.'
         ]);
 
-        // Validación de dominio institucional para estudiantes
-        if ((int) $data['id_rol'] === 1) {
-            $correo = strtolower($data['correo']);
-            $dominioValido = str_ends_with($correo, '@uleam.edu.ec')
-                          || str_ends_with($correo, '@live.uleam.edu.ec');
-
-            if (!$dominioValido) {
-                throw ValidationException::withMessages([
-                    'correo' => ['Los estudiantes deben usar su correo institucional de la ULEAM (@uleam.edu.ec o @live.uleam.edu.ec).'],
-                ]);
-            }
-        }
-
         $user = User::create([
-            'nombres'   => $data['nombres'],
-            'correo'    => $data['correo'],
+            'nombres'    => $data['nombres'],
+            'correo'     => $data['correo'],
             'clave_hash' => Hash::make($data['clave']),
-            'id_rol'    => $data['id_rol'],
-            'estado'    => 'pendiente',
+            'id_rol'     => $data['id_rol'],
+            'estado'     => 'pendiente',
+            'telefono'   => $data['telefono'] ?? null,
         ]);
 
         // Crear perfil automáticamente
@@ -58,6 +59,16 @@ class AuthController extends Controller
         }
 
         $user->perfil()->create($perfilData);
+
+        // ── Correo de bienvenida personalizado ────────────────────────────────
+        // Se envía de forma tolerante a fallos: si el mailer falla, el registro
+        // no se interrumpe. En desarrollo se registra en storage/logs/laravel.log
+        try {
+            Mail::to($user->correo)->send(new BienvenidaUsuario($user));
+        } catch (\Throwable $e) {
+            \Log::warning('[AuthController] No se pudo enviar correo de bienvenida: ' . $e->getMessage());
+        }
+        // ───────────────────────────────────────────────────────────────
 
         // Disparar evento estándar de Laravel para enviar correo de verificación
         event(new \Illuminate\Auth\Events\Registered($user));
