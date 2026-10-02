@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api, { LandlordVerification } from '../../services/api';
 import {
   ShieldCheck,
@@ -118,6 +119,8 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
     }
   }, [reviewNotes]);
 
+  const navigate = useNavigate();
+
   const handleRechazar = async () => {
     if (!observacion.trim()) {
       alert('Debes escribir el motivo del rechazo en las Notas de Auditoría para que el arrendador sepa qué corregir.');
@@ -131,6 +134,7 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
         onReject(solicitud.nombres, typeof targetId === 'number' ? targetId : undefined);
       }
       onClose();
+      navigate('/verificacion/historial');
     } catch (error: any) {
       console.error('Error al rechazar documentación:', error);
       const msg = error.response?.data?.message || 'Hubo un problema al rechazar los documentos.';
@@ -442,7 +446,7 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
             </label>
             <textarea
               value={observacion}
-              onChange={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 setObservacion(e.target.value);
                 if (setReviewNotes) setReviewNotes(e.target.value);
               }}
@@ -509,7 +513,7 @@ export const VerificacionModal: React.FC<VerificacionModalProps> = ({
               )}
             </button>
             <button
-              onClick={handleAprobar}
+              onClick={() => handleAprobar()}
               disabled={approving || rejecting}
               className="px-4 py-2 text-white bg-emerald-500 hover:bg-emerald-600 rounded-md font-medium flex items-center gap-2"
               style={{

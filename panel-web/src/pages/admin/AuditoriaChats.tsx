@@ -78,16 +78,27 @@ export function AuditoriaChats() {
   const [loadingChats, setLoadingChats] = useState<boolean>(true);
   const [loadingMensajes, setLoadingMensajes] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [hasMore, setHasMore] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Cargar lista de conversaciones
-  const fetchChats = async () => {
-    setLoadingChats(true);
+  const fetchChats = async (page: number = 1, search: string = searchQuery) => {
+    if (page === 1) setLoadingChats(true);
     try {
-      const data = await getAdminChats();
-      setChats(data);
-      // Si no hay chat seleccionado y hay al menos uno, seleccionamos el primero opcionalmente
-      if (!chatSeleccionado && data.length > 0) {
+      const response = await getAdminChats(page, search);
+      const data = response.data || response; // compatibility
+      
+      setChats(prev => page === 1 ? data : [...prev, ...data]);
+      
+      if (response.current_page !== undefined && response.last_page !== undefined) {
+        setHasMore(response.current_page < response.last_page);
+      } else {
+        setHasMore(false); // fallback
+      }
+
+      // Si no hay chat seleccionado y hay al menos uno, seleccionamos el primero opcionalmente (solo pag 1)
+      if (page === 1 && !chatSeleccionado && data.length > 0) {
         handleSelectChat(data[0]);
       }
     } catch (error) {
@@ -98,8 +109,18 @@ export function AuditoriaChats() {
   };
 
   useEffect(() => {
-    fetchChats();
+    fetchChats(1, '');
   }, []);
+
+  // Debounce para la búsqueda
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      setCurrentPage(1);
+      fetchChats(1, searchQuery);
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   // Seleccionar chat y cargar su historial de mensajes
   const handleSelectChat = async (chat: ChatItem) => {
@@ -123,21 +144,8 @@ export function AuditoriaChats() {
     }
   }, [mensajes]);
 
-  // Filtrado de chats por nombre de estudiante, arrendador o propiedad
-  const chatsFiltrados = chats.filter((c) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    const estName = c.estudiante?.nombres?.toLowerCase() || '';
-    const arrName = c.arrendador?.nombres?.toLowerCase() || '';
-    const propTitle = c.inmueble?.titulo?.toLowerCase() || '';
-    const lastMsg = c.ultimo_mensaje_texto?.toLowerCase() || '';
-    return (
-      estName.includes(query) ||
-      arrName.includes(query) ||
-      propTitle.includes(query) ||
-      lastMsg.includes(query)
-    );
-  });
+  // Ya no filtramos localmente porque el backend se encarga de buscar
+  const chatsFiltrados = chats;
 
   const formatearFecha = (fechaStr?: string) => {
     if (!fechaStr) return '';
@@ -307,7 +315,8 @@ export function AuditoriaChats() {
                 <span style={{ fontSize: 11 }}>No hay mensajes que coincidan con la búsqueda.</span>
               </div>
             ) : (
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              <>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {chatsFiltrados.map((chat) => {
                   const isSelected = chatSeleccionado?.id === chat.id;
                   const estudianteNombre = chat.estudiante?.nombres || 'Estudiante ULEAM';
@@ -382,6 +391,35 @@ export function AuditoriaChats() {
                   );
                 })}
               </ul>
+              
+              {/* Botón Cargar Más */}
+              {hasMore && (
+                <div style={{ padding: '16px', textAlign: 'center' }}>
+                  <button
+                    onClick={() => {
+                      const nextPage = currentPage + 1;
+                      setCurrentPage(nextPage);
+                      fetchChats(nextPage, searchQuery);
+                    }}
+                    style={{
+                      background: '#F3F4F6',
+                      border: '1px solid #E5E7EB',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      color: '#374151',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                  >
+                    Cargar más conversaciones
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>
@@ -544,7 +582,7 @@ export function AuditoriaChats() {
                           >
                             <Clock size={11} color="#9CA3AF" />
                             <span>{formatearFecha(mensaje.fecha || mensaje.created_at)}</span>
-                            {mensaje.leido && <CheckCheck size={13} color="#2563EB" title="Mensaje leído por el destinatario" />}
+                            {mensaje.leido && <span title="Mensaje leído por el destinatario"><CheckCheck size={13} color="#2563EB" /></span>}
                           </div>
                         </div>
                       </div>

@@ -85,7 +85,7 @@ export default function Login() {
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               placeholder="admin@uleam.edu.ec"
               style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid #D1D5DB', fontSize: 14, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' }}
             />
@@ -99,7 +99,7 @@ export default function Login() {
               type="password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               placeholder="••••••••"
               style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid #D1D5DB', fontSize: 14, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' }}
             />

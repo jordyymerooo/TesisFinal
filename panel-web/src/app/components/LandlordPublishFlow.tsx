@@ -83,7 +83,7 @@ export function LandlordPublishFlow({ initialStep = 1 }: Props) {
       {/* Step Footer Navigation */}
       {step < 4 && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 36px", background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-          <div style={{ display: "flex", align: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {[1, 2, 3].map((s) => (
               <div key={s} style={{ width: s === step ? 24 : 8, height: 8, borderRadius: 4, background: s < step ? "#10B981" : s === step ? WINE : "#e0e0e0", transition: "all 0.25s" }} />
             ))}

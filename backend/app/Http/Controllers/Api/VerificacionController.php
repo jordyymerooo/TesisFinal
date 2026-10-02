@@ -116,7 +116,7 @@ class VerificacionController extends Controller
      */
     public function aprobar(Request $request, string $id)
     {
-        $usuario = \App\Models\User::findOrFail($id);
+        $usuario = \App\Models\User::where('id_usuario', $id)->firstOrFail();
 
         $perfil = \App\Models\Perfil::firstOrCreate(
             ['id_usuario' => $usuario->id_usuario],
@@ -125,7 +125,24 @@ class VerificacionController extends Controller
         $perfil->documento_verificado = true;
         $perfil->save();
 
-        $usuario->update(['estado' => 'activo']);
+        $adminId = \Illuminate\Support\Facades\Auth::id() ?? 1;
+
+        $usuario->update([
+            'estado'       => 'activo',
+            'estado_kyc'   => 'aprobado',
+            'kyc_intentos' => 0,
+            'verified_by'  => $adminId,
+            'verified_at'  => now(),
+        ]);
+
+        \App\Models\KycHistory::create([
+            'id_arrendador'     => $usuario->id_usuario,
+            'id_admin'          => $adminId,
+            'accion'            => 'aprobado',
+            'observaciones'     => 'Documentación validada',
+            'arrendador_nombre' => $usuario->nombres,
+            'arrendador_cedula' => $usuario->cedula ?: $perfil->identificacion,
+        ]);
 
         try {
             \Illuminate\Support\Facades\Mail::to($usuario->correo)->send(new \App\Mail\ArrendadorAprobadoMail($usuario));
@@ -150,34 +167,63 @@ class VerificacionController extends Controller
             'observacion' => ['required', 'string', 'min:3'],
         ]);
 
-        $usuario = \App\Models\User::where('id_usuario', $id)->orWhere('id', $id)->firstOrFail();
+        $usuario = \App\Models\User::where('id_usuario', $id)->firstOrFail();
+        $adminId = \Illuminate\Support\Facades\Auth::id() ?? 1;
 
-        $usuario->update([
-            'estado_kyc'      => 'rechazado',
-            'kyc_observacion' => $request->observacion,
+        $arrendadorNombre = $usuario->nombres;
+        $arrendadorCedula = $usuario->cedula ?: ($usuario->perfil?->identificacion ?? null);
+
+        // Registrar en el historial KYC inmutable
+        \App\Models\KycHistory::create([
+            'id_arrendador'     => $usuario->id_usuario,
+            'id_admin'          => $adminId,
+            'accion'            => 'rechazado',
+            'observaciones'     => $request->observacion,
+            'arrendador_nombre' => $arrendadorNombre,
+            'arrendador_cedula' => $arrendadorCedula,
         ]);
 
-        if ($usuario->perfil) {
-            $usuario->perfil->update([
-                'documento_verificado' => false,
-                'kyc_observacion'      => $request->observacion,
+        $usuario->increment('kyc_intentos');
+
+        if ($usuario->kyc_intentos >= 3) {
+            // Eliminar cuenta por fallar 3 veces
+            $usuario->tokens()->delete();
+            $usuario->delete();
+            return response()->json([
+                'status'  => 'deleted',
+                'message' => 'Cuenta eliminada por exceder límite de rechazos.',
+            ], 200);
+        } else {
+            // Rechazo normal, dar oportunidad de subir de nuevo
+            $usuario->update([
+                'estado_kyc'      => 'rechazado',
+                'kyc_observacion' => $request->observacion,
+                'verified_by'     => $adminId,
+                'verified_at'     => now(),
+            ]);
+
+            if ($usuario->perfil) {
+                $usuario->perfil->update([
+                    'documento_verificado' => false,
+                    'kyc_observacion'      => $request->observacion,
+                ]);
+            }
+
+            $emailDestino = $usuario->correo ?: $usuario->email;
+            try {
+                \Illuminate\Support\Facades\Mail::to($emailDestino)->send(
+                    new \App\Mail\ArrendadorRechazadoMail($usuario, $request->observacion)
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("No se pudo enviar correo de rechazo a {$emailDestino}: " . $e->getMessage());
+            }
+
+            return response()->json([
+                'status'   => 'success',
+                'message'  => 'Documentos rechazados.',
+                'usuario'  => $usuario->fresh(['rol', 'perfil']),
             ]);
         }
-
-        $emailDestino = $usuario->correo ?: $usuario->email;
-        try {
-            \Illuminate\Support\Facades\Mail::to($emailDestino)->send(
-                new \App\Mail\ArrendadorRechazadoMail($usuario, $request->observacion)
-            );
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("No se pudo enviar correo de rechazo a {$emailDestino}: " . $e->getMessage());
-        }
-
-        return response()->json([
-            'status'   => 'success',
-            'message'  => 'Documentación rechazada y notificación enviada al arrendador.',
-            'usuario'  => $usuario->fresh(['rol', 'perfil']),
-        ]);
     }
 
     /**
@@ -186,5 +232,60 @@ class VerificacionController extends Controller
     public function destroy(string $id)
     {
         return response()->json(['message' => 'Las verificaciones son registros permanentes.'], 405);
+    }
+
+    /**
+     * Retorna el historial de verificaciones KYC (Aprobadas o Rechazadas)
+     * GET /api/v1/admin/verificaciones/historial
+     */
+    public function getVerificationHistory()
+    {
+        $historial = \App\Models\KycHistory::with([
+            'arrendador:id_usuario,nombres,correo',
+            'arrendador.perfil',
+            'admin:id_usuario,nombres'
+        ])
+        ->latest()
+        ->get();
+
+        $data = $historial->map(function ($item) {
+            $nombreArrendador = $item->arrendador?->nombres ?: ($item->arrendador_nombre ?: "Usuario #{$item->id_arrendador}");
+            $cedulaArrendador = $item->arrendador?->perfil?->identificacion ?: ($item->arrendador?->cedula ?: ($item->arrendador_cedula ?: 'N/A'));
+            $nombreAdmin = $item->admin?->nombres ?: 'Administrador (Sistema)';
+            $fecha = $item->created_at ? $item->created_at->toIso8601String() : now()->toIso8601String();
+
+            return [
+                'id'                => $item->id,
+                'id_usuario'        => $item->id_arrendador,
+                'id_arrendador'     => $item->id_arrendador,
+                'id_admin'          => $item->id_admin,
+                'accion'            => $item->accion,
+                'estado_kyc'        => $item->accion,
+                'observaciones'     => $item->observaciones,
+                'nombres'           => $nombreArrendador,
+                'cedula'            => $cedulaArrendador,
+                'identificacion'    => $cedulaArrendador,
+                'created_at'        => $fecha,
+                'verified_at'       => $fecha,
+                'arrendador'        => [
+                    'id_usuario' => $item->id_arrendador,
+                    'nombres'    => $nombreArrendador,
+                    'cedula'     => $cedulaArrendador,
+                ],
+                'admin'             => [
+                    'id_usuario' => $item->id_admin,
+                    'nombres'    => $nombreAdmin,
+                ],
+                'verified_by_admin' => [
+                    'id_usuario' => $item->id_admin,
+                    'nombres'    => $nombreAdmin,
+                ],
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $data,
+        ]);
     }
 }

@@ -17,7 +17,7 @@ const shimmerStyle = `
   }
 `;
 
-function SK({ w="100%", h=14, r=8, style={} as React.CSSProperties }) {
+function SK({ w="100%", h=14, r=8, style={} }: { w?: string|number, h?: string|number, r?: string|number, style?: React.CSSProperties }) {
   return <div className="sk" style={{ width:w, height:h, borderRadius:r, ...style }}/>;
 }
 

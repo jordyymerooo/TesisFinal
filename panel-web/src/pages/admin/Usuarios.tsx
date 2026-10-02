@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api, { toggleUserStatus, updateAdminUser, sendNotificationToUser } from '../../services/api';
 import {
   Users,
@@ -23,6 +24,7 @@ import {
   Trash2,
   Eye,
   Key,
+  History,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -36,8 +38,11 @@ export interface UserItem {
   foto_url?: string | null;
   foto_perfil?: string | null;
   cedula?: string;
+  identificacion?: string;
   rol: string;
   estado: string;
+  estado_kyc?: string | null;
+  kyc_observacion?: string | null;
   telefono?: string;
   ciudad_origen?: string;
   documento_verificado?: boolean;
@@ -393,32 +398,65 @@ export function Usuarios() {
     }
   };
 
-  const getStatusBadge = (estado: string) => {
-    const st = (estado || '').toLowerCase();
-    switch (st) {
-      case 'activo':
-        return {
-          label: 'Activo',
-          bg: '#ECFDF5',
-          color: '#059669',
-          border: '#A7F3D0',
-        };
-      case 'suspendido':
-        return {
-          label: 'Suspendido',
-          bg: '#FEF2F2',
-          color: '#DC2626',
-          border: '#FECACA',
-        };
-      case 'pendiente':
-      default:
-        return {
-          label: 'Pendiente',
-          bg: '#FFFBEB',
-          color: '#D97706',
-          border: '#FDE68A',
-        };
+  const getStatusBadge = (user: UserItem) => {
+    const rol = (user.rol || '').toLowerCase();
+    const estado = (user.estado || '').toLowerCase();
+    const estadoKyc = (user.estado_kyc || '').toLowerCase();
+    const isArrendador = rol.includes('arrendador');
+
+    // 1. Si es Arrendador y su KYC fue rechazado: Badge Rojo 'Rechazado' (bg-red-100 text-red-700)
+    if (isArrendador && (estadoKyc === 'rechazado' || estado === 'rechazado')) {
+      return {
+        label: 'Rechazado',
+        bg: '#FEE2E2', // bg-red-100
+        color: '#B91C1C', // text-red-700
+        border: '#FECACA',
+      };
     }
+
+    // Si su cuenta está suspendida o inactiva
+    if (estado === 'suspendido' || estado === 'inactivo') {
+      return {
+        label: 'Suspendido',
+        bg: '#F3F4F6',
+        color: '#4B5563',
+        border: '#E5E7EB',
+      };
+    }
+
+    // 2. Si su estado global o KYC es 'pendiente': Badge Amarillo 'En Revisión' (bg-yellow-100 text-yellow-700)
+    if (
+      estado === 'pendiente' ||
+      estadoKyc === 'pendiente' ||
+      estadoKyc === 'en_revision' ||
+      estadoKyc === 'pendiente_documentos' ||
+      (isArrendador && !user.documento_verificado && estadoKyc !== 'aprobado')
+    ) {
+      return {
+        label: 'En Revisión',
+        bg: '#FEF3C7', // bg-yellow-100
+        color: '#B45309', // text-yellow-700
+        border: '#FDE68A',
+      };
+    }
+
+    // 3. Si su estado es 'activo' (y KYC aprobado para arrendadores): Badge Verde 'Activo' (bg-green-100 text-green-700)
+    if (estado === 'activo') {
+      return {
+        label: 'Activo',
+        bg: '#DCFCE7', // bg-green-100
+        color: '#15803D', // text-green-700
+        border: '#BBF7D0',
+      };
+    }
+
+    // Fallback general
+    return {
+      label: 'En Revisión',
+      bg: '#FEF3C7',
+      color: '#B45309',
+      border: '#FDE68A',
+    };
   };
 
   return (
@@ -494,6 +532,28 @@ export function Usuarios() {
             <RefreshCw size={14} color="#6B7280" style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Actualizar</span>
           </button>
+
+          <Link
+            to="/usuarios/historial"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: '#F9FAFB',
+              color: '#374151',
+              border: '1px solid #E5E7EB',
+              padding: '9px 18px',
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              textDecoration: 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <History size={16} />
+            <span>📋 Historial de Acciones</span>
+          </Link>
 
           <button
             style={{
@@ -703,7 +763,7 @@ export function Usuarios() {
               ) : (
                 filteredUsers.map((user, index) => {
                   const roleBadge = getRoleBadge(user.rol);
-                  const statusBadge = getStatusBadge(user.estado);
+                  const statusBadge = getStatusBadge(user);
                   const RoleIcon = roleBadge.icon;
                   const userId = user.id_usuario || user.id;
                   const isUserActive = (user.estado || '').toLowerCase() === 'activo';
@@ -721,26 +781,24 @@ export function Usuarios() {
                     >
                       {/* ID */}
                       <td style={{ padding: '16px 24px', fontSize: 13, color: '#9CA3AF', fontFamily: 'monospace' }}>
-                        #{userId.toString().padStart(3, '0')}
+                        #{(userId || 0).toString().padStart(3, '0')}
                       </td>
 
                       {/* Usuario: Avatar + Nombre + Correo + Ciudad */}
                       <td style={{ padding: '16px 20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          {user.foto_url ? (
+                          {user.foto_perfil || user.foto_url ? (
                             <img
-                              src={user.foto_url}
+                              src={user.foto_perfil || user.foto_url || ''}
                               alt="Perfil"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.nombres)}&background=8C1515&color=fff`;
-                              }}
+                              className="w-10 h-10 rounded-full object-cover border border-gray-200"
                               style={{
                                 width: 40,
                                 height: 40,
                                 borderRadius: '50%',
                                 objectFit: 'cover',
-                                border: '2px solid #FFFFFF',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                border: '1px solid #E5E7EB',
+                                boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
                                 flexShrink: 0,
                               }}
                             />
@@ -771,12 +829,6 @@ export function Usuarios() {
                               {user.nombres}
                             </div>
                             <div style={{ fontSize: 11, color: '#6B7280' }}>{user.correo}</div>
-                            {user.ciudad_origen && (
-                              <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                <MapPin size={10} />
-                                <span>{user.ciudad_origen}</span>
-                              </div>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -784,14 +836,12 @@ export function Usuarios() {
                       {/* Cédula y Teléfono */}
                       <td style={{ padding: '16px 20px' }}>
                         <div style={{ fontSize: 13, color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
-                          {user.cedula || '1300000000'}
+                          {user.cedula || user.identificacion || 'N/A'}
                         </div>
-                        {user.telefono && (
-                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Phone size={10} />
-                            <span>{user.telefono}</span>
-                          </div>
-                        )}
+                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Phone size={10} />
+                          <span>{user.telefono || 'N/A'}</span>
+                        </div>
                       </td>
 
                       {/* Rol */}
@@ -890,25 +940,6 @@ export function Usuarios() {
                             <Edit2 size={13} />
                           </button>
 
-                          {/* Botón Enviar Notificación Oficial (Megáfono) */}
-                          <button
-                            title="Enviar notificación oficial"
-                            style={{
-                              background: '#EFF6FF',
-                              border: '1px solid #BFDBFE',
-                              borderRadius: 8,
-                              padding: '6px 10px',
-                              cursor: 'pointer',
-                              color: '#2563EB',
-                              transition: 'all 0.15s ease',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                            }}
-                            onClick={() => handleOpenNotifyModal(user)}
-                          >
-                            <Megaphone size={13} />
-                          </button>
-
                           {/* Botón Dar de Baja (Suspender) / Reactivar */}
                           <button
                             title={isUserActive ? 'Dar de baja (Suspender)' : 'Reactivar usuario'}
@@ -951,7 +982,7 @@ export function Usuarios() {
                               display: 'inline-flex',
                               alignItems: 'center',
                             }}
-                            onClick={() => handleDeleteUser(userId, user.nombres)}
+                            onClick={() => handleDeleteUser(userId || 0, user.nombres)}
                           >
                             {deletingId === userId ? (
                               <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1602,6 +1633,7 @@ export function Usuarios() {
                 >
                   <option value="estudiante">Estudiante</option>
                   <option value="arrendador">Arrendador</option>
+                  <option value="administrador">Administrador</option>
                 </select>
                 <span className="block mt-1 text-[11px] text-gray-400">
                   Podrá iniciar sesión en la app móvil con este correo y clave.
@@ -1693,7 +1725,7 @@ export function Usuarios() {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>Cédula</label>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.cedula || 'N/A'}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginTop: 4 }}>{selectedUserDetail.perfil?.identificacion || selectedUserDetail.identificacion || selectedUserDetail.cedula || 'N/A'}</div>
                   </div>
                 </div>
 

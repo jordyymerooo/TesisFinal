@@ -71,14 +71,30 @@ class ChatController extends Controller
      * GET /api/v1/admin/chats
      * Listar todas las conversaciones de auditoría para el administrador.
      */
-    public function adminIndex(): JsonResponse
+    public function adminIndex(Request $request): JsonResponse
     {
         self::syncChatsFromMensajes();
 
-        $chats = Chat::with(['estudiante.perfil', 'arrendador.perfil', 'inmueble'])
+        $query = Chat::with(['estudiante.perfil', 'arrendador.perfil', 'inmueble'])
             ->orderByDesc('ultimo_mensaje_at')
-            ->orderByDesc('updated_at')
-            ->get();
+            ->orderByDesc('updated_at');
+
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('estudiante', function ($q2) use ($search) {
+                    $q2->where('nombres', 'like', "%{$search}%");
+                })
+                ->orWhereHas('arrendador', function ($q3) use ($search) {
+                    $q3->where('nombres', 'like', "%{$search}%");
+                })
+                ->orWhereHas('inmueble', function ($q4) use ($search) {
+                    $q4->where('titulo', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        $chats = $query->paginate(15);
 
         return response()->json($chats);
     }

@@ -3,11 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\BienvenidaUsuario;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -33,10 +31,16 @@ class AuthController extends Controller
             'clave'          => ['required', 'confirmed', Password::min(8)],
             'id_rol'         => ['required', 'integer', 'in:1,2'], // solo estudiante o arrendador
             'identificacion' => ['nullable', 'string', 'max:20'],
-            'telefono'       => ['nullable', 'string', 'max:15'],
+            'cedula'         => ['nullable', 'string', 'max:20'],
+            'telefono'       => ['nullable', 'string', 'max:20'],
         ], [
             'correo.regex' => 'Debes utilizar un correo institucional de la ULEAM.'
         ]);
+
+        $cedula = $request->input('cedula') ?: $request->input('identificacion');
+        $telefono = $request->input('telefono');
+
+        $isArrendador = ((int) $data['id_rol'] === 2);
 
         $user = User::create([
             'nombres'    => $data['nombres'],
@@ -44,13 +48,15 @@ class AuthController extends Controller
             'clave_hash' => Hash::make($data['clave']),
             'id_rol'     => $data['id_rol'],
             'estado'     => 'pendiente',
-            'telefono'   => $data['telefono'] ?? null,
+            'estado_kyc' => $isArrendador ? 'pendiente' : null,
+            'telefono'   => $telefono,
         ]);
 
-        // Crear perfil automáticamente
+        // Crear perfil automáticamente con identificación y teléfono reales
         $perfilData = [
             'id_usuario'     => $user->id_usuario,
-            'identificacion' => $request->input('identificacion'),
+            'identificacion' => $cedula,
+            'telefono'       => $telefono,
         ];
 
         if ((int) $data['id_rol'] === 2) {
@@ -60,26 +66,14 @@ class AuthController extends Controller
 
         $user->perfil()->create($perfilData);
 
-        // ── Correo de bienvenida personalizado ────────────────────────────────
-        // Se envía de forma tolerante a fallos: si el mailer falla, el registro
-        // no se interrumpe. En desarrollo se registra en storage/logs/laravel.log
-        try {
-            Mail::to($user->correo)->send(new BienvenidaUsuario($user));
-        } catch (\Throwable $e) {
-            \Log::warning('[AuthController] No se pudo enviar correo de bienvenida: ' . $e->getMessage());
-        }
-        // ───────────────────────────────────────────────────────────────
-
-        // Disparar evento estándar de Laravel para enviar correo de verificación
+        // Disparar únicamente el evento estándar de Laravel para enviar un solo correo de verificación
         event(new \Illuminate\Auth\Events\Registered($user));
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
         return response()->json([
-            'message'        => 'Usuario registrado exitosamente. Te hemos enviado un correo de confirmación para verificar tu cuenta.',
+            'message'        => 'Registro exitoso, por favor verifica tu correo.',
+            'id_usuario'     => $user->id_usuario,
+            'correo'         => $user->correo,
             'user'           => $user->load('rol', 'perfil'),
-            'token'          => $token,
-            'token_type'     => 'Bearer',
             'email_verified' => false,
         ], 201);
     }
@@ -140,6 +134,31 @@ class AuthController extends Controller
     }
 
     /**
+     * POST /api/v1/auth/profile/photo
+     * Actualiza la foto de perfil del usuario logueado.
+     */
+    public function updatePhoto(Request $request)
+    {
+        $request->validate([
+            'foto' => ['required', 'image', 'max:5120'], // Max 5MB
+        ]);
+
+        $user = $request->user();
+
+        if ($request->hasFile('foto')) {
+            $path = $request->file('foto')->store('avatars', 'public');
+            // En Laravel 11, puedes guardar la ruta o la URL completa
+            $user->foto = url('storage/' . $path);
+            $user->save();
+        }
+
+        return response()->json([
+            'message' => 'Foto actualizada',
+            'user'    => $user->load('rol', 'perfil')
+        ]);
+    }
+
+    /**
      * POST /api/v1/auth/logout
      * Revoca el token actual. Requiere auth:sanctum.
      */
@@ -159,5 +178,47 @@ class AuthController extends Controller
         return response()->json(
             $request->user()->load('rol', 'perfil')
         );
+    }
+
+    /**
+     * PUT /api/v1/auth/update-email
+     * Actualiza el correo del usuario autenticado.
+     * Requiere confirmación con la contraseña actual.
+     */
+    public function updateEmail(Request $request)
+    {
+        $request->validate([
+            'nuevo_email' => ['required', 'email', 'max:150', 'unique:users,correo'],
+            'clave'       => ['required', 'string'],
+        ], [
+            'nuevo_email.unique' => 'Este correo ya está registrado en el sistema.',
+            'nuevo_email.email'  => 'Por favor, ingresa un correo electrónico válido.',
+        ]);
+
+        $user = $request->user();
+
+        if (! Hash::check($request->input('clave'), $user->clave_hash)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'La contraseña ingresada es incorrecta.',
+            ], 422);
+        }
+
+        $nuevoCorreo = strtolower(trim($request->input('nuevo_email')));
+
+        // Actualizar correo y resetear verificación
+        $user->correo             = $nuevoCorreo;
+        $user->email_verified_at  = null;
+        $user->save();
+
+        // Reenviar correo de verificación al nuevo correo
+        event(new \Illuminate\Auth\Events\Registered($user));
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Correo actualizado. Por favor, verifica tu nuevo correo electrónico.',
+            'correo'  => $nuevoCorreo,
+            'user'    => $user->fresh(['rol', 'perfil']),
+        ]);
     }
 }

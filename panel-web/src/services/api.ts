@@ -262,13 +262,18 @@ export const updateAdminUser = async (id: number | string, data: any) => {
   return res.data;
 };
 
+export const getInmueble = async (id: number | string) => {
+  const res = await api.get(`/inmuebles/${id}`);
+  return res.data;
+};
+
 /**
  * Obtener listado de conversaciones de auditoría para el administrador
  * GET /api/v1/admin/chats
  */
-export const getAdminChats = async () => {
-  const res = await api.get('/admin/chats');
-  return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+export const getAdminChats = async (page: number = 1, search: string = '') => {
+  const res = await api.get('/admin/chats', { params: { page, search } });
+  return res.data; // Return full pagination object
 };
 
 /**

@@ -71,13 +71,14 @@ class UserController extends Controller
             }
         }
 
-        // Crear usuario con clave encriptada mediante Hash::make
+        $isArrendador = ((int)$idRol === 2);
         $usuario = User::create([
             'nombres'    => $nombres,
             'correo'     => $correo,
             'clave_hash' => Hash::make($password),
             'id_rol'     => $idRol,
-            'estado'     => 'activo', // Activo para que pueda iniciar sesión de inmediato
+            'estado'     => $isArrendador ? 'pendiente' : 'activo',
+            'estado_kyc' => $isArrendador ? 'pendiente' : null,
         ]);
 
         // Crear perfil asociado
@@ -96,7 +97,7 @@ class UserController extends Controller
 
         $rolNombre = strtolower($usuario->rol?->nombre ?? ($idRol === 2 ? 'arrendador' : 'estudiante'));
         $avatar = "https://ui-avatars.com/api/?name=" . urlencode($usuario->nombres) . "&background=8C1515&color=fff&size=128";
-        $cedulaFinal = $cedula ?: ($perfil->telefono ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '00000000', 0, 8) : '13' . str_pad((string) $usuario->id_usuario, 8, '0', STR_PAD_LEFT));
+        $cedulaFinal = $cedula ?: ($perfil->identificacion ?? null);
 
         $userData = [
             'id_usuario'           => $usuario->id_usuario,
@@ -104,10 +105,11 @@ class UserController extends Controller
             'nombres'              => $usuario->nombres,
             'correo'               => $usuario->correo,
             'cedula'               => $cedulaFinal,
+            'identificacion'       => $cedulaFinal,
             'rol'                  => $rolNombre,
             'estado'               => $usuario->estado,
             'avatar'               => $avatar,
-            'telefono'             => $perfil->telefono,
+            'telefono'             => $perfil->telefono ?: $usuario->telefono,
             'ciudad_origen'        => $perfil->ciudad_origen,
             'documento_verificado' => (bool) $perfil->documento_verificado,
             'created_at'           => $usuario->created_at ? $usuario->created_at->format('d M Y') : 'Hoy',
@@ -143,11 +145,16 @@ class UserController extends Controller
             $inmueblesAfectados = Inmueble::where('id_arrendador', $usuario->id_usuario)
                 ->update(['estado' => 'oculto_por_admin']);
         } elseif ($nuevoEstado === 'activo' && ($usuario->esArrendador() || $usuario->id_rol === 2)) {
-            // Si se reactiva, devolver a 'disponible' los que fueron ocultados por el admin
             $inmueblesAfectados = Inmueble::where('id_arrendador', $usuario->id_usuario)
                 ->where('estado', 'oculto_por_admin')
                 ->update(['estado' => 'disponible']);
         }
+
+        \App\Models\UserAuditLog::create([
+            'admin_id' => \Illuminate\Support\Facades\Auth::id(),
+            'action' => $nuevoEstado === 'suspendido' ? 'suspendió' : 'reactivó',
+            'target_user_name' => $usuario->nombres ?: $usuario->correo,
+        ]);
 
         return response()->json([
             'status'              => 'success',
@@ -217,6 +224,12 @@ class UserController extends Controller
 
         $usuario->load(['rol', 'perfil']);
 
+        \App\Models\UserAuditLog::create([
+            'admin_id' => \Illuminate\Support\Facades\Auth::id(),
+            'action' => 'modificó',
+            'target_user_name' => $usuario->nombres ?: $usuario->correo,
+        ]);
+
         return response()->json([
             'status'  => 'success',
             'message' => "Usuario {$usuario->nombres} actualizado exitosamente.",
@@ -225,10 +238,11 @@ class UserController extends Controller
                 'id'              => $usuario->id_usuario,
                 'nombres'         => $usuario->nombres,
                 'correo'          => $usuario->correo,
-                'cedula'          => $perfil->telefono ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '00000000', 0, 8) : '13' . str_pad((string)$usuario->id_usuario, 8, '0', STR_PAD_LEFT),
+                'cedula'          => $perfil->identificacion ?: ($usuario->cedula ?? null),
+                'identificacion'  => $perfil->identificacion ?: ($usuario->cedula ?? null),
                 'rol'             => strtolower($usuario->rol?->nombre ?? 'estudiante'),
                 'estado'          => $usuario->estado,
-                'telefono'        => $perfil->telefono,
+                'telefono'        => $usuario->telefono ?: $perfil->telefono,
                 'ciudad_origen'   => $perfil->ciudad_origen,
             ],
         ]);
@@ -354,6 +368,12 @@ class UserController extends Controller
             $usuario->delete();
         });
 
+        \App\Models\UserAuditLog::create([
+            'admin_id' => \Illuminate\Support\Facades\Auth::id(),
+            'action' => 'eliminó',
+            'target_user_name' => $nombre ?: $usuario->correo,
+        ]);
+
         return response()->json([
             'status'  => 'success',
             'message' => "Usuario {$nombre} y todos sus datos relacionados fueron eliminados exitosamente.",
@@ -457,6 +477,18 @@ class UserController extends Controller
             'status'  => 'success',
             'message' => 'Token de notificaciones registrado correctamente.',
         ], 200);
+    }
+
+    public function getAuditHistory(): JsonResponse
+    {
+        $history = \App\Models\UserAuditLog::with('admin:id_usuario,nombres')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $history
+        ]);
     }
 }
 

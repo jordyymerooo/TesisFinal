@@ -31,9 +31,12 @@ class InmuebleController extends Controller
             return response()->json($inmuebles);
         }
 
-        // Estudiante / público: solo inmuebles disponibles y aprobados
+        // Estudiante / público: solo inmuebles disponibles y aprobados de dueños verificados
         $query = Inmueble::with(['arrendador', 'fotografias', 'ubicacion'])
-            ->whereIn('estado', ['disponible', 'publicado', 'aprobado', 'activa']);
+            ->whereIn('estado', ['disponible', 'publicado', 'Disponible', 'Publicado', 'activo', 'Activo'])
+            ->whereHas('arrendador', function ($q) {
+                $q->whereIn('estado_kyc', ['aprobado', 'Aprobado', 'verificado', 'Verificado']);
+            });
 
         // Filtro por tipo si se envía
         if ($request->filled('tipo') && $request->input('tipo') !== 'Todos') {
@@ -70,7 +73,10 @@ class InmuebleController extends Controller
      */
     public function mapa(Request $request)
     {
-        $inmuebles = Inmueble::whereIn('estado', ['disponible', 'publicado'])
+        $inmuebles = Inmueble::whereIn('estado', ['disponible', 'publicado', 'Disponible', 'Publicado', 'activo', 'Activo'])
+            ->whereHas('arrendador', function ($q) {
+                $q->whereIn('estado_kyc', ['aprobado', 'Aprobado', 'verificado', 'Verificado']);
+            })
             ->with([
                 'ubicacion:id_inmueble,latitud,longitud,direccion_referencial,sector,distancia_uleam_km',
                 'fotografias' => fn ($q) => $q->where('es_portada', true)->orderBy('orden')->limit(1),
@@ -303,12 +309,18 @@ class InmuebleController extends Controller
             'titulo'               => ['sometimes', 'string', 'max:150'],
             'descripcion'          => ['nullable', 'string'],
             'normas'               => ['nullable', 'string'],
-            'precio'               => ['sometimes', 'numeric', 'min:0'],
             'tipo'                 => ['sometimes', 'in:cuarto,mini_departamento,departamento_compartido,suite'],
             'estado'               => ['sometimes', 'in:borrador,publicado,inactivo'],
             'capacidad'            => ['nullable', 'integer', 'min:1', 'max:255'],
             'servicios_incluidos'  => ['boolean'],
         ]);
+
+        if ($request->has('precio') && $request->precio !== null) {
+            $cleanedPrice = str_replace(['$', ','], '', $request->precio);
+            if (is_numeric($cleanedPrice)) {
+                $data['precio'] = (float) $cleanedPrice;
+            }
+        }
 
         $inmueble->update($data);
 
@@ -337,25 +349,71 @@ class InmuebleController extends Controller
             }
         }
 
-        // Si se enviaron nuevas fotos
+        // 1. Procesar eliminación física y lógica de fotos indicadas en deleted_photos
+        $deletedPhotoIds = $request->input('deleted_photos');
+        if (is_string($deletedPhotoIds)) {
+            $decoded = json_decode($deletedPhotoIds, true);
+            $deletedPhotoIds = is_array($decoded) ? $decoded : explode(',', $deletedPhotoIds);
+        }
+
+        if (is_array($deletedPhotoIds) && count($deletedPhotoIds) > 0) {
+            $numericIds = array_filter(array_map('intval', $deletedPhotoIds));
+            if (!empty($numericIds)) {
+                $fotosToDelete = Fotografia::where('id_inmueble', $inmueble->id_inmueble)
+                    ->whereIn('id_foto', $numericIds)
+                    ->get();
+
+                foreach ($fotosToDelete as $foto) {
+                    $rawUrl = $foto->getRawOriginal('url') ?? $foto->url;
+                    $relativePath = null;
+
+                    if (str_contains($rawUrl, 'storage/')) {
+                        $parts = explode('storage/', $rawUrl);
+                        $relativePath = end($parts);
+                    } elseif (!str_starts_with($rawUrl, 'http://') && !str_starts_with($rawUrl, 'https://')) {
+                        $relativePath = ltrim($rawUrl, '/');
+                    }
+
+                    if ($relativePath && \Illuminate\Support\Facades\Storage::disk('public')->exists($relativePath)) {
+                        \Illuminate\Support\Facades\Storage::disk('public')->delete($relativePath);
+                    }
+
+                    $foto->delete();
+                }
+            }
+        }
+
+        // 2. Procesar nuevas fotos subidas agregándolas sin eliminar las fotos restantes
         if ($request->hasFile('fotos')) {
             $files = $request->file('fotos');
             if (!is_array($files)) {
                 $files = [$files];
             }
+
+            $currentMaxOrden = Fotografia::where('id_inmueble', $inmueble->id_inmueble)->max('orden') ?? 0;
+            $hasPortada = Fotografia::where('id_inmueble', $inmueble->id_inmueble)->where('es_portada', true)->exists();
+
             foreach ($files as $index => $file) {
                 if ($file && $file->isValid()) {
-                    $path = $file->store('inmuebles', 'public');
+                    // Nombre único para romper caché en la app móvil
+                    $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs('inmuebles', $filename, 'public');
                     $url  = asset("storage/{$path}");
 
                     Fotografia::create([
                         'id_inmueble' => $inmueble->id_inmueble,
                         'url'         => $url,
-                        'orden'       => $index + 1,
-                        'es_portada'  => ($index === 0),
+                        'orden'       => $currentMaxOrden + $index + 1,
+                        'es_portada'  => (!$hasPortada && $index === 0),
                     ]);
                 }
             }
+        }
+
+        // 3. Garantizar que siempre haya al menos una foto de portada si quedan fotos
+        $fotosRestantes = Fotografia::where('id_inmueble', $inmueble->id_inmueble)->orderBy('orden')->get();
+        if ($fotosRestantes->isNotEmpty() && !$fotosRestantes->contains('es_portada', true)) {
+            $fotosRestantes->first()->update(['es_portada' => true]);
         }
 
         // Si se envió ubicación al editar
@@ -373,7 +431,7 @@ class InmuebleController extends Controller
 
         return response()->json([
             'message'  => 'Inmueble actualizado.',
-            'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios']),
+            'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios', 'arrendador']),
         ]);
     }
 
@@ -397,22 +455,35 @@ class InmuebleController extends Controller
     /**
      * PATCH /api/v1/inmuebles/{id}/estado
      * Alternar el estado de un inmueble (ej. 'disponible' vs 'ocupada'). Solo el propietario.
+     * Si el nuevo estado es 'publicado', registra quién aprobó y cuándo.
      */
     public function toggleStatus(Request $request, string $id)
     {
         $inmueble = Inmueble::findOrFail($id);
 
         $authUserId = auth()->id() ?? $request->user()?->id_usuario;
-        if ((int) $inmueble->id_arrendador !== (int) $authUserId) {
+        $authUser   = $request->user() ?? auth('sanctum')->user();
+
+        // El propietario o el administrador pueden cambiar el estado
+        $esAdmin = $authUser && method_exists($authUser, 'esAdministrador') && $authUser->esAdministrador();
+
+        if ((int) $inmueble->id_arrendador !== (int) $authUserId && !$esAdmin) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
         $request->validate([
-            'estado' => ['required', 'string', 'in:disponible,ocupada,ocupado,publicado,inactivo,borrador'],
+            'estado' => ['required', 'string', 'in:disponible,ocupada,ocupado,publicado,rechazado,inactivo,borrador'],
         ]);
 
         $nuevoEstado = $request->input('estado');
         $inmueble->estado = $nuevoEstado;
+
+        // Si se aprueba, registrar admin y timestamp
+        if ($nuevoEstado === 'publicado' && $esAdmin) {
+            $inmueble->aprobado_por = $authUserId;
+            $inmueble->aprobado_en  = now();
+        }
+
         $inmueble->save();
 
         return response()->json([
@@ -420,6 +491,32 @@ class InmuebleController extends Controller
             'message'  => 'Estado del inmueble actualizado correctamente.',
             'estado'   => $inmueble->estado,
             'inmueble' => $inmueble->fresh(['ubicacion', 'fotografias', 'servicios']),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/admin/inmuebles/historial
+     * Retorna todas las propiedades aprobadas (estado=publicado) con
+     * relaciones: arrendador, aprobador, ubicacion, fotografias.
+     * Ordenadas por aprobado_en DESC.
+     */
+    public function historialAprobaciones()
+    {
+        $historial = Inmueble::where('estado', 'publicado')
+            ->with([
+                'arrendador:id_usuario,nombres,correo',
+                'aprobador:id_usuario,nombres,correo',
+                'fotografias' => fn ($q) => $q->where('es_portada', true)->limit(1),
+                'ubicacion:id_inmueble,sector,direccion_referencial',
+            ])
+            ->select('id_inmueble', 'titulo', 'tipo', 'precio', 'estado', 'id_arrendador', 'aprobado_por', 'aprobado_en', 'created_at')
+            ->orderByDesc('aprobado_en')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'total'  => $historial->count(),
+            'data'   => $historial,
         ]);
     }
 }

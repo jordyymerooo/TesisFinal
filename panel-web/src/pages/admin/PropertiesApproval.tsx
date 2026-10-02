@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   Users,
@@ -18,6 +19,7 @@ import {
   Check,
   X,
   Sparkles,
+  ClipboardList,
 } from 'lucide-react';
 import {
   getPendingProperties,
@@ -32,6 +34,7 @@ const WINE_LIGHT = 'rgba(140, 21, 21, 0.08)';
 export function PropertiesApproval() {
   // ── Tab Superior Activo ──
   const [activeTab, setActiveTab] = useState<'approval' | 'users' | 'reports'>('approval');
+  const navigate = useNavigate();
 
   // ── Datos de Propiedades ──
   const [properties, setProperties] = useState<PendingProperty[]>([]);
@@ -187,6 +190,28 @@ export function PropertiesApproval() {
         >
           <RefreshCw size={15} color={WINE} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           Actualizar Lista
+        </button>
+
+        <button
+          onClick={() => navigate('/propiedades/historial')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #D1D5DB',
+            borderRadius: 10,
+            padding: '9px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#374151',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            transition: 'all 0.2s',
+          }}
+        >
+          <ClipboardList size={15} color="#374151" />
+          Historial de Aprobaciones
         </button>
       </div>
 

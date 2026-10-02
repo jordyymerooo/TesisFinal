@@ -49,6 +49,8 @@ Route::post('/email/verification-notification', [EmailVerificationController::cl
 Route::post('/v1/email/verification-notification', [EmailVerificationController::class, 'resend'])->name('v1.verification.send');
 Route::post('/email/verify-status', [EmailVerificationController::class, 'checkStatus'])->name('verification.status');
 Route::post('/v1/email/verify-status', [EmailVerificationController::class, 'checkStatus'])->name('v1.verification.status');
+Route::get('/check-verification/{email}', [EmailVerificationController::class, 'checkVerificationByEmail'])->name('verification.check-email');
+Route::get('/v1/check-verification/{email}', [EmailVerificationController::class, 'checkVerificationByEmail'])->name('v1.verification.check-email');
 
 // ─────────────────────────────────────────────
 // HEALTHCHECK & PING
@@ -72,6 +74,8 @@ Route::prefix('v1/auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/me',      [AuthController::class, 'me'])->name('auth.me');
         Route::get('/user',    [AuthController::class, 'me'])->name('auth.user');
+        Route::post('/profile/photo', [AuthController::class, 'updatePhoto'])->name('auth.photo');
+        Route::put('/update-email',   [AuthController::class, 'updateEmail'])->name('auth.update-email');
     });
 });
 
@@ -94,10 +98,17 @@ Route::prefix('v1/auth/password')->group(function () {
 });
 
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// RUTAS DE SUBIDA KYC (Permite subir KYC con token o con id_usuario/correo tras registro)
+// ─────────────────────────────────────────────
+Route::post('/kyc/documentos', [KYCController::class, 'upload']);
+Route::prefix('v1')->group(function () {
+    Route::post('/kyc/documentos', [KYCController::class, 'upload']);
+});
+
 // RUTAS SOLO CON LOGIN (Se permite subir KYC aunque no tenga el email verificado)
 // ─────────────────────────────────────────────
 Route::middleware(['auth:sanctum'])->group(function () {
-    Route::post('/kyc/documentos', [KYCController::class, 'upload']);
     Route::get('/user', function (Request $request) { return $request->user()->load('rol', 'perfil'); });
     Route::post('/user/foto', [UserController::class, 'updateFoto']);
     Route::post('/v1/user/foto', [UserController::class, 'updateFoto']);
@@ -106,7 +117,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
-    Route::post('/kyc/documentos', [KYCController::class, 'upload']);
     Route::post('/user/foto', [UserController::class, 'updateFoto']);
     // Registro de Expo Push Token (prefijo v1)
     Route::post('/user/push-token', [UserController::class, 'registerPushToken']);
@@ -132,6 +142,21 @@ Route::prefix('v1')->group(function () {
     // Ruta optimizada para el mapa móvil — DEBE ir antes de /{id} para no colisionar
     Route::get('/inmuebles/mapa',     [InmuebleController::class, 'mapa'])->name('inmuebles.mapa');
     Route::get('/inmuebles/{id}',     [InmuebleController::class, 'show'])->name('inmuebles.show');
+
+    // Puntos de interés públicos
+    Route::get('/points-of-interest', function () {
+        return response()->json([
+            'status' => 'success',
+            'data' => \App\Models\PointOfInterest::all()
+        ]);
+    });
+
+    // Ubicación del campus público
+    Route::get('/settings/campus-location', function () {
+        $lat = \App\Models\Setting::where('key', 'campus_lat')->value('value') ?? '-0.9555';
+        $lng = \App\Models\Setting::where('key', 'campus_lng')->value('value') ?? '-80.7380';
+        return response()->json(['status' => 'success', 'lat' => (float) $lat, 'lng' => (float) $lng]);
+    });
 
     // Gestión de inmuebles: solo arrendador autenticado y con correo verificado
     Route::middleware(['auth:sanctum', 'verified', 'role:arrendador'])->group(function () {
@@ -197,8 +222,69 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'role:administrador'])->group(f
 // ADMIN DASHBOARD (rutas para panel administrativo)
 // ─────────────────────────────────────────────
 Route::prefix('v1/admin')->group(function () {
+    // Mapa administrativo
+    Route::get('/map-properties', function () {
+        $inmuebles = \App\Models\Inmueble::with(['arrendador:id_usuario,nombres', 'ubicacion'])
+            ->whereIn('estado', ['publicado', 'en_revision', 'pendiente'])
+            ->get()
+            ->map(function ($i) {
+                return [
+                    'id' => $i->id_inmueble,
+                    'titulo' => $i->titulo,
+                    'precio' => (float) $i->precio,
+                    'latitud' => $i->ubicacion->latitud ?? null,
+                    'longitud' => $i->ubicacion->longitud ?? null,
+                    'arrendador' => $i->arrendador ? ['id_usuario' => $i->arrendador->id_usuario, 'nombres' => $i->arrendador->nombres] : null,
+                ];
+            })
+            ->filter(fn($i) => $i['latitud'] !== null && $i['longitud'] !== null)
+            ->values();
+        
+        return response()->json(['status' => 'success', 'data' => $inmuebles]);
+    });
+
+    Route::get('/settings/campus-location', function () {
+        $lat = \App\Models\Setting::where('key', 'campus_lat')->value('value') ?? '-0.9555';
+        $lng = \App\Models\Setting::where('key', 'campus_lng')->value('value') ?? '-80.7380';
+        return response()->json(['status' => 'success', 'lat' => (float) $lat, 'lng' => (float) $lng]);
+    });
+
+    Route::post('/settings/campus-location', function (\Illuminate\Http\Request $request) {
+        $request->validate(['lat' => 'required|numeric', 'lng' => 'required|numeric']);
+        \App\Models\Setting::updateOrCreate(['key' => 'campus_lat'], ['value' => $request->lat]);
+        \App\Models\Setting::updateOrCreate(['key' => 'campus_lng'], ['value' => $request->lng]);
+        return response()->json(['status' => 'success']);
+    });
+
+    Route::get('/points-of-interest', function () {
+        return response()->json(['status' => 'success', 'data' => \App\Models\PointOfInterest::all()]);
+    });
+
+    Route::post('/points-of-interest', function (\Illuminate\Http\Request $request) {
+        $data = $request->validate([
+            'name' => 'required|string',
+            'type' => 'required|string',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+        ]);
+        $point = \App\Models\PointOfInterest::create($data);
+        return response()->json(['status' => 'success', 'data' => $point]);
+    });
+
+    Route::patch('/points-of-interest/{id}', function (\Illuminate\Http\Request $request, $id) {
+        $point = \App\Models\PointOfInterest::findOrFail($id);
+        $point->update($request->only(['name', 'latitude', 'longitude']));
+        return response()->json(['status' => 'success', 'data' => $point]);
+    });
+
+    Route::delete('/points-of-interest/{id}', function ($id) {
+        \App\Models\PointOfInterest::findOrFail($id)->delete();
+        return response()->json(['status' => 'success']);
+    });
+
     Route::get('/stats', [AdminController::class, 'stats'])->name('admin.stats');
     Route::get('/usuarios', [AdminController::class, 'usuarios'])->name('admin.usuarios');
+    Route::get('/usuarios/historial', [UserController::class, 'getAuditHistory']);
     Route::get('/users', [AdminController::class, 'usuarios'])->name('admin.users');
     Route::post('/usuarios', [UserController::class, 'storeAsAdmin'])->name('admin.usuarios.store');
     Route::post('/usuarios/{id}/reset-password', [UserController::class, 'resetPassword'])->name('admin.usuarios.resetPassword');
@@ -213,7 +299,9 @@ Route::prefix('v1/admin')->group(function () {
     // Endpoints KYC para Arrendadores
     Route::get('/arrendadores/pendientes', [AdminController::class, 'getPendingLandlords'])->name('admin.arrendadores.pendientes');
     Route::get('/pending-verifications', [AdminController::class, 'getPendingLandlords'])->name('admin.pending-verifications');
-    Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification'])->name('admin.verificaciones.show');
+    Route::get('/verificaciones/historial', [VerificacionController::class, 'getVerificationHistory'])->name('admin.verificaciones.historial');
+    Route::get('/arrendadores/historial', [VerificacionController::class, 'getVerificationHistory'])->name('admin.arrendadores.historial');
+    Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification'])->whereNumber('id')->name('admin.verificaciones.show');
     Route::patch('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord'])->name('admin.arrendadores.aprobar');
     Route::post('/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
     Route::patch('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar'])->name('admin.verificaciones.aprobar');
@@ -284,6 +372,14 @@ Route::prefix('v1/admin')->group(function () {
 
         $inmueble = \App\Models\Inmueble::findOrFail($id);
         $inmueble->estado = $request->input('estado');
+
+        // Si se está aprobando (publicando), registrar quién aprobó y cuándo
+        if ($request->input('estado') === 'publicado') {
+            $admin = $request->user() ?? auth('sanctum')->user();
+            $inmueble->aprobado_por = $admin?->id_usuario;
+            $inmueble->aprobado_en  = now();
+        }
+
         $inmueble->save();
 
         return response()->json([
@@ -292,6 +388,9 @@ Route::prefix('v1/admin')->group(function () {
             'inmueble' => $inmueble->fresh(['arrendador', 'ubicacion', 'fotografias']),
         ]);
     })->name('admin.inmuebles.estado');
+
+    // Historial de aprobaciones: propiedades publicadas con info del admin aprobador
+    Route::get('/inmuebles/historial', [InmuebleController::class, 'historialAprobaciones'])->name('admin.inmuebles.historial');
 });
 
 // ─────────────────────────────────────────────
@@ -405,8 +504,9 @@ Route::prefix('admin')->group(function () {
 Route::post('/admin/usuarios', [UserController::class, 'storeAsAdmin']);
 Route::delete('/admin/usuarios/{id}', [UserController::class, 'destroy']);
 Route::delete('/admin/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
-Route::delete('/v1/admin/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
-Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification']);
+Route::get('/admin/verificaciones/historial', [VerificacionController::class, 'getVerificationHistory']);
+Route::get('/admin/arrendadores/historial', [VerificacionController::class, 'getVerificationHistory']);
+Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification'])->whereNumber('id');
 Route::patch('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
 Route::post('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
 Route::patch('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);

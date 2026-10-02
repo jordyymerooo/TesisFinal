@@ -21,14 +21,41 @@ class KYCController extends Controller
     {
         $user = $request->user();
 
+        if (!$user && $request->filled('id_usuario')) {
+            $user = User::find($request->input('id_usuario'));
+        }
+
+        if (!$user && $request->filled('correo')) {
+            $user = User::where('correo', strtolower(trim($request->input('correo'))))->first();
+        }
+
         if (!$user) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Usuario no autenticado.',
+                'message' => 'Usuario no identificado o no encontrado.',
             ], 401);
         }
 
         $perfil = $user->perfil ?? Perfil::create(['id_usuario' => $user->id_usuario]);
+
+        // Helper para borrar archivos físicos antiguos del disco público
+        $deleteOldFile = function (?string $url) {
+            if (!$url) return;
+            if (preg_match('#/storage/(.+)$#', $url, $matches)) {
+                $relativePath = $matches[1];
+                if (Storage::disk('public')->exists($relativePath)) {
+                    Storage::disk('public')->delete($relativePath);
+                }
+            }
+        };
+
+        // Si el usuario ya tenía archivos previos (porque su estado era rechazado o re-sube), borrar archivos antiguos
+        if ($user->estado_kyc === 'rechazado' || !empty($perfil->documento_url)) {
+            $deleteOldFile($perfil->documento_url);
+            $deleteOldFile($perfil->documento_posterior_url);
+            $deleteOldFile($perfil->foto_perfil_url);
+            $deleteOldFile($perfil->recibo_luz_url);
+        }
 
         $uploadedUrls = [];
         $documentKeys = [
@@ -59,10 +86,11 @@ class KYCController extends Controller
             }
         }
 
-        // Asignar a perfil
+        // Asignar a perfil y limpiar observaciones previas
         $updates = [
             'documento_verificado' => false,
             'documento_tipo'       => 'cedula',
+            'kyc_observacion'      => null,
         ];
 
         if (isset($uploadedUrls['cedulaFrontal'])) {
@@ -87,16 +115,19 @@ class KYCController extends Controller
 
         $perfil->update($updates);
 
-        // Actualizar estado del usuario a pendiente de revisión
-        $user->estado = 'pendiente';
-        $user->save();
+        // Crítico: Cambiar el estado del usuario de vuelta a la cola de revisión
+        $user->update([
+            'estado_kyc'      => 'pendiente',
+            'kyc_observacion' => null,
+            'estado'          => 'pendiente',
+        ]);
 
         $freshUser = $user->fresh(['rol', 'perfil']);
 
         return response()->json([
             'status'      => 'success',
             'message'     => 'Documentos de identidad recibidos exitosamente. Tu cuenta está en revisión por el equipo administrativo.',
-            'estado_kyc'  => 'en_revision',
+            'estado_kyc'  => 'pendiente',
             'documentos'  => $uploadedUrls,
             'user'        => $freshUser,
         ], 200);

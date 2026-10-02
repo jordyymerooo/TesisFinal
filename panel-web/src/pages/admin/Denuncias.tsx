@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -503,9 +504,13 @@ export function Denuncias() {
                           {reporte.inmueble ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                               <Building2 size={14} color="#4B5563" />
-                              <span style={{ fontWeight: 700, color: '#111827' }}>
+                              <Link 
+                                to={`/propiedades/${reporte.inmueble.id_inmueble}`}
+                                className="text-blue-600 hover:underline cursor-pointer transition-colors"
+                                style={{ fontWeight: 700 }}
+                              >
                                 {reporte.inmueble.titulo}
-                              </span>
+                              </Link>
                             </div>
                           ) : null}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

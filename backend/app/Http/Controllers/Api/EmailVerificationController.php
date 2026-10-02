@@ -51,6 +51,10 @@ class EmailVerificationController extends Controller
 
         if (! $alreadyVerified) {
             $user->markEmailAsVerified();
+            // Activar automáticamente el estado general de la cuenta
+            $user->estado = 'activo';
+            $user->save();
+            
             event(new Verified($user));
         }
 
@@ -128,6 +132,33 @@ class EmailVerificationController extends Controller
             'verified' => (bool) $verified,
             'correo'   => $user->correo,
             'message'  => $verified ? 'El correo está verificado.' : 'El correo aún no ha sido verificado.',
+        ]);
+    }
+
+    /**
+     * Comprobar si el correo del usuario ya fue verificado por su email.
+     * GET /api/v1/check-verification/{email}
+     */
+    public function checkVerificationByEmail(string $email): JsonResponse
+    {
+        $normalizedEmail = strtolower(trim($email));
+
+        $user = User::where('correo', $normalizedEmail)->first();
+
+        if ($user && ($user->hasVerifiedEmail() || (!empty($user->email_verified_at) && $user->estado === 'activo'))) {
+            if ($user->estado !== 'activo') {
+                $user->estado = 'activo';
+                $user->save();
+            }
+
+            return response()->json([
+                'verified' => true,
+                'message'  => 'Verificado',
+            ]);
+        }
+
+        return response()->json([
+            'verified' => false,
         ]);
     }
 }

@@ -57,13 +57,19 @@ class AdminController extends Controller
      */
     public function getPendingLandlords(): JsonResponse
     {
-        // Consultar usuarios con id_rol = 2 (Arrendador) y perfil con documento_verificado = false
+        // Consultar usuarios con id_rol = 2 (Arrendador) que tengan documentos pendientes de revisión
         $arrendadores = User::where('id_rol', 2)
             ->where(function ($query) {
-                $query->whereHas('perfil', function ($q) {
-                    $q->where('documento_verificado', false);
-                })->orWhereDoesntHave('perfil');
+                $query->where('estado_kyc', 'pendiente')
+                      ->orWhere(function ($sub) {
+                          $sub->whereNull('estado_kyc')
+                              ->whereHas('perfil', function ($p) {
+                                  $p->whereNotNull('documento_url')
+                                    ->where('documento_verificado', false);
+                              });
+                      });
             })
+            ->whereNotIn('estado_kyc', ['aprobado', 'rechazado'])
             ->with(['perfil', 'inmuebles.fotografias', 'inmuebles.ubicacion'])
             ->orderByDesc('created_at')
             ->get();
@@ -238,9 +244,25 @@ class AdminController extends Controller
         $perfil->documento_verificado = true;
         $perfil->save();
 
-        // Asegurar que el usuario esté activo
-        $user->estado = 'activo';
-        $user->save();
+        $adminId = \Illuminate\Support\Facades\Auth::id() ?? 1;
+
+        // Asegurar que el usuario esté activo y con KYC aprobado
+        $user->update([
+            'estado'       => 'activo',
+            'estado_kyc'   => 'aprobado',
+            'kyc_intentos' => 0,
+            'verified_by'  => $adminId,
+            'verified_at'  => now(),
+        ]);
+
+        \App\Models\KycHistory::create([
+            'id_arrendador'     => $user->id_usuario,
+            'id_admin'          => $adminId,
+            'accion'            => 'aprobado',
+            'observaciones'     => 'Documentación validada',
+            'arrendador_nombre' => $user->nombres,
+            'arrendador_cedula' => $user->cedula ?: ($perfil?->identificacion ?? null),
+        ]);
 
         // Disparar correo de bienvenida y confirmación
         try {
@@ -257,6 +279,8 @@ class AdminController extends Controller
                 'nombres'              => $user->nombres,
                 'correo'               => $user->correo,
                 'documento_verificado' => true,
+                'estado_kyc'           => 'aprobado',
+                'verified_at'          => $user->verified_at,
             ],
         ]);
     }
@@ -295,15 +319,17 @@ class AdminController extends Controller
             $rolNombre = strtolower($u->rol?->nombre ?? 'estudiante');
 
             // Determinar la foto de perfil y generar la URL completa accesible desde el navegador
-            $fotoOriginal = $perfil?->foto_perfil_url ?? $u->foto_perfil ?? null;
+            $rawFoto = $perfil?->foto_perfil_url ?? $perfil?->foto ?? $u->foto_perfil ?? $u->foto ?? null;
             $fotoUrl = null;
 
-            if ($fotoOriginal) {
-                if (str_starts_with($fotoOriginal, 'http://') || str_starts_with($fotoOriginal, 'https://')) {
-                    $fotoUrl = $fotoOriginal;
+            if ($rawFoto) {
+                if (preg_match('#/storage/(.+)$#', $rawFoto, $matches)) {
+                    $fotoUrl = url('storage/' . $matches[1]);
+                } elseif (str_starts_with($rawFoto, 'http://') || str_starts_with($rawFoto, 'https://')) {
+                    $fotoUrl = $rawFoto;
                 } else {
-                    $cleaned = ltrim(str_replace('storage/', '', $fotoOriginal), '/');
-                    $fotoUrl = asset('storage/' . $cleaned);
+                    $cleaned = ltrim(str_replace('storage/', '', $rawFoto), '/');
+                    $fotoUrl = url('storage/' . $cleaned);
                 }
             }
 
@@ -314,17 +340,24 @@ class AdminController extends Controller
                 $avatar = "https://ui-avatars.com/api/?name={$seed}&background=8C1515&color=fff&size=128";
             }
 
+            $cedulaReal = $perfil?->identificacion ?: ($u->cedula ?? null);
+            $telefonoReal = $u->telefono ?: ($perfil?->telefono ?? null);
+
             return [
                 'id_usuario'           => $u->id_usuario,
                 'id'                   => $u->id_usuario,
                 'nombres'              => $u->nombres,
                 'correo'               => $u->correo,
-                'cedula'               => $perfil?->telefono ? '13' . substr(preg_replace('/\D/', '', $perfil->telefono) . '00000000', 0, 8) : '13' . str_pad((string)$u->id_usuario, 8, '0', STR_PAD_LEFT),
+                'cedula'               => $cedulaReal,
+                'identificacion'       => $cedulaReal,
                 'rol'                  => $rolNombre,
-                'estado'               => $u->estado ?: 'activo',
+                'estado'               => $u->estado ?: (((int)$u->id_rol === 2) ? 'pendiente' : 'activo'),
+                'estado_kyc'           => $u->estado_kyc ?: ($perfil?->documento_verificado ? 'aprobado' : (((int)$u->id_rol === 2) ? 'pendiente' : null)),
+                'kyc_observacion'      => $u->kyc_observacion ?? $perfil?->kyc_observacion,
+                'foto_perfil'          => $fotoUrl,
                 'foto_url'             => $fotoUrl,
                 'avatar'               => $avatar,
-                'telefono'             => $perfil?->telefono,
+                'telefono'             => $telefonoReal,
                 'ciudad_origen'        => $perfil?->ciudad_origen,
                 'documento_verificado' => (bool) ($perfil?->documento_verificado ?? false),
                 'created_at'           => $u->created_at ? $u->created_at->format('d M Y') : '15 Sep 2026',
@@ -394,7 +427,7 @@ class AdminController extends Controller
      */
     public function deleteFotoPerfil(string $id): JsonResponse
     {
-        $user = User::where('id_usuario', $id)->orWhere('id', $id)->firstOrFail();
+        $user = User::where('id_usuario', $id)->firstOrFail();
 
         // Eliminar archivo en storage si existe
         if ($user->foto_perfil && Storage::disk('public')->exists($user->foto_perfil)) {

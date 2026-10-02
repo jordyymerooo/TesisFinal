@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api, {
   getPendingLandlords,
   approveLandlord,
@@ -20,6 +21,7 @@ import {
   Building2,
   CalendarCheck,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -317,6 +319,27 @@ export function Verificacion() {
             <Clock size={14} color="#6B7280" />
             <span>Actualizado: {lastUpdated}</span>
           </div>
+
+          <Link
+            to="/verificacion/historial"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: '#F9FAFB',
+              border: '1px solid #E5E7EB',
+              padding: '7px 12px',
+              borderRadius: 10,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#374151',
+              textDecoration: 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <History size={14} color="#6B7280" />
+            <span>📋 Historial de Verificaciones</span>
+          </Link>
         </div>
       </div>
 

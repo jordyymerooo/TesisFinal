@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('id_rol')->constrained('roles', 'id_rol')->restrictOnDelete();
             $table->string('nombres', 150);
             $table->string('correo', 150)->unique();
+            $table->string('telefono', 20)->nullable();
             $table->string('clave_hash');
             $table->enum('estado', ['activo', 'suspendido', 'pendiente'])->default('pendiente');
             $table->rememberToken();

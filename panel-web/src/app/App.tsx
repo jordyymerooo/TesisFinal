@@ -1,5 +1,6 @@
-export { default } from "../App";
-
+import { useState, useEffect } from 'react';
+import { authService } from './api/services';
+import { MobileHomeScreen } from "./components/MobileHomeScreen";
 import { MobileDetailScreen } from "./components/MobileDetailScreen";
 import { MobileMessagingScreen } from "./components/MobileMessagingScreen";
 import { MobileProfileScreen } from "./components/MobileProfileScreen";
@@ -279,7 +280,7 @@ export default function App() {
                 { step: "04", title: "¡Publicado!", desc: "Confirmación con timeline de revisión ULEAM", color: "#F59E0B" },
               ].map((s) => (
                 <div key={s.step} style={{ flex: 1, padding: "16px", background: "rgba(255,255,255,0.04)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
-                  <div style={{ display: "flex", items: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, fontFamily: "monospace", color: s.color }}>{s.step}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{s.title}</span>
                   </div>

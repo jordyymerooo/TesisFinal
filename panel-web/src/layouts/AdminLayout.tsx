@@ -15,6 +15,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Megaphone,
+  MapPin,
 } from 'lucide-react';
 
 const WINE = '#8C1515';
@@ -25,6 +26,10 @@ export function AdminLayout() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
+  const [adminUser, setAdminUser] = useState<any>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchPendingCount = async () => {
     try {
@@ -47,9 +52,19 @@ export function AdminLayout() {
     }
   };
 
+  const fetchUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setAdminUser(res.data?.user || res.data);
+    } catch (err) {
+      console.warn('[AdminLayout] Error al obtener usuario autenticado:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPendingCount();
     fetchPendingReportsCount();
+    fetchUser();
 
     const handleUpdate = () => {
       fetchPendingCount();
@@ -71,6 +86,7 @@ export function AdminLayout() {
     { path: '/denuncias', label: 'Denuncias', icon: AlertTriangle, isDenuncias: true },
     { path: '/auditoria-chats', label: 'Auditoría de Chats', icon: MessageSquare },
     { path: '/propiedades', label: 'Propiedades', icon: Building2 },
+    { path: '/mapa', label: 'Mapa de Alojamientos', icon: MapPin },
     { path: '/reportes', label: 'Reportes', icon: BarChart3 },
     { path: '/avisos', label: 'Gestión de Avisos', icon: Megaphone },
   ];
@@ -247,76 +263,134 @@ export function AdminLayout() {
             />
           </div>
 
-          {/* Acciones Derecha (Notificaciones + Perfil Superadmin) */}
+          {/* Acciones Derecha (Perfil Superadmin) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            {/* Campanita de Notificaciones */}
-            <button
-              style={{
-                position: 'relative',
-                background: '#F3F4F6',
-                border: '1px solid #E5E7EB',
-                borderRadius: 10,
-                width: 38,
-                height: 38,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Notificaciones"
-            >
-              <Bell size={18} color="#4B5563" />
-              {pendingCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -3,
-                    right: -3,
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: WINE,
-                    color: '#fff',
-                    fontSize: 10,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '2px solid #fff',
-                  }}
-                >
-                  {pendingCount}
-                </span>
-              )}
-            </button>
-
             {/* Divisor */}
             <div style={{ width: 1, height: 28, background: '#E5E7EB' }} />
 
             {/* Avatar Superadministrador */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
-                alt="Avatar Superadministrador"
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  objectFit: 'cover',
-                  border: `2px solid ${WINE}`,
-                }}
-              />
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+              onClick={() => setIsProfileModalOpen(true)}
+              title="Cambiar foto de perfil"
+            >
+              {adminUser?.foto_url || adminUser?.foto ? (
+                <img
+                  src={adminUser.foto_url || adminUser.foto}
+                  alt="Avatar Administrador"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    objectFit: 'cover',
+                    border: `2px solid ${WINE}`,
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: '#FDF2F8',
+                    border: `2px solid ${WINE}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: WINE,
+                    fontWeight: 700,
+                    fontSize: 16,
+                  }}
+                >
+                  {(adminUser?.nombres || 'A').charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
-                  Ing. Jordy Zambrano
+                  {adminUser?.nombres || 'Cargando...'}
                 </div>
                 <div style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>
-                  Superadministrador
+                  {adminUser?.rol?.nombre_rol || 'Administrador'}
                 </div>
               </div>
             </div>
           </div>
         </header>
+
+        {/* Modal Perfil */}
+        {isProfileModalOpen && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: 340, padding: 24, textAlign: 'center', position: 'relative' }}>
+              <button
+                onClick={() => setIsProfileModalOpen(false)}
+                style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280' }}
+              >
+                ✕
+              </button>
+              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#111827' }}>Mi Perfil</h3>
+              
+              <div style={{ marginBottom: 20 }}>
+                {adminUser?.foto_url || adminUser?.foto ? (
+                  <img
+                    src={adminUser.foto_url || adminUser.foto}
+                    alt="Perfil"
+                    style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '2px solid #E5E7EB', margin: '0 auto' }}
+                  />
+                ) : (
+                  <div style={{ width: 90, height: 90, borderRadius: '50%', background: '#FDF2F8', border: '2px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', color: WINE, fontSize: 32, fontWeight: 700, margin: '0 auto' }}>
+                    {(adminUser?.nombres || 'A').charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setIsUploadingPhoto(true);
+                    const formData = new FormData();
+                    formData.append('foto', e.target.files[0]);
+                    try {
+                      const res = await api.post('/auth/profile/photo', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                      });
+                      setAdminUser(res.data.user);
+                      alert('Foto actualizada');
+                    } catch (err) {
+                      alert('Error al subir foto');
+                    } finally {
+                      setIsUploadingPhoto(false);
+                      setIsProfileModalOpen(false);
+                    }
+                  }
+                }}
+              />
+
+              <button
+                disabled={isUploadingPhoto}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ background: WINE, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 13, width: '100%', cursor: isUploadingPhoto ? 'not-allowed' : 'pointer', opacity: isUploadingPhoto ? 0.7 : 1 }}
+              >
+                {isUploadingPhoto ? 'Subiendo...' : 'Cambiar Foto'}
+              </button>
+              
+              <button
+                onClick={() => {
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('sanctum_token');
+                  localStorage.removeItem('uleam_auth_token');
+                  window.location.href = '/login';
+                }}
+                style={{ marginTop: 12, background: 'transparent', color: '#DC2626', border: '1px solid #FECACA', padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 13, width: '100%', cursor: 'pointer' }}
+              >
+                Cerrar Sesión
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Content Body */}
         <main style={{ flex: 1, padding: '32px' }}>
