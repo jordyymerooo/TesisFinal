@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "681401571488",
+    "project_id": "uleam-rental",
+    "storage_bucket": "uleam-rental.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:681401571488:android:e56963160e8d379bd091c5",
+        "android_client_info": {
+          "package_name": "jordym.uleamrental"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIZyGVyCr32ZrR60QkGi72HCtQi6wSyEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
