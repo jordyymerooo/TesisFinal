@@ -99,6 +99,9 @@ class User extends Authenticatable implements MustVerifyEmail
     public function getFotoUrlAttribute(): ?string
     {
         if ($this->foto_perfil) {
+            if (preg_match('#https?://[^/]+/storage/(.*)#', $this->foto_perfil, $matches)) {
+                return asset('storage/' . ltrim($matches[1], '/'));
+            }
             if (str_starts_with($this->foto_perfil, 'http://') || str_starts_with($this->foto_perfil, 'https://')) {
                 return $this->foto_perfil;
             }
@@ -108,6 +111,9 @@ class User extends Authenticatable implements MustVerifyEmail
         $perfil = $this->relationLoaded('perfil') ? $this->perfil : $this->perfil()->first();
         if ($perfil && $perfil->foto_perfil_url) {
             $url = $perfil->foto_perfil_url;
+            if (preg_match('#https?://[^/]+/storage/(.*)#', $url, $matches)) {
+                return asset('storage/' . ltrim($matches[1], '/'));
+            }
             if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
                 return $url;
             }

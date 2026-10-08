@@ -47,6 +47,21 @@ export interface UserItem {
   ciudad_origen?: string;
   documento_verificado?: boolean;
   created_at?: string;
+  perfil?: {
+    identificacion?: string;
+    cedula?: string;
+    telefono?: string;
+    ciudad_origen?: string;
+    direccion?: string;
+    foto_perfil_url?: string | null;
+    documento_url?: string | null;
+    documento_posterior_url?: string | null;
+    recibo_luz_url?: string | null;
+    documento_verificado?: boolean;
+    documento_tipo?: string;
+    kyc_observacion?: string | null;
+    [key: string]: any;
+  } | null;
 }
 
 export function Usuarios() {

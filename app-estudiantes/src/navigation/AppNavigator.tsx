@@ -17,30 +17,38 @@ import {
 } from 'lucide-react-native';
 
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../theme/theme';
-import { StudentMapModule } from '../../components/StudentMapModule';
-import { AuthModule } from '../../components/AuthModule';
-import { MobileDetailScreen } from '../../components/MobileDetailScreen';
-import { PublishPropertyScreen } from '../screens/landlord/PublishPropertyScreen';
-import { IdentityVerificationScreen } from '../screens/landlord/IdentityVerificationScreen';
-import { WaitingApprovalScreen } from '../screens/landlord/WaitingApprovalScreen';
-import { MyPropertiesScreen } from '../screens/landlord/MyPropertiesScreen';
+// ── Pantallas de Estudiante ──
+import { StudentMapModule } from '../screens/student/StudentMapModule';
+import { MobileDetailScreen } from '../screens/student/MobileDetailScreen';
 import { FavoritesScreen } from '../screens/student/FavoritesScreen';
 import { StudentRequestsScreen } from '../screens/student/StudentRequestsScreen';
 import { NotificationsScreen } from '../screens/student/NotificationsScreen';
 import { ExploreScreen } from '../screens/student/ExploreScreen';
-import { WelcomeScreen } from '../screens/onboarding/WelcomeScreen';
-import { RoleSelectionScreen } from '../screens/onboarding/RoleSelectionScreen';
-import { RegisterScreen } from '../screens/onboarding/RegisterScreen';
-import { OnboardingSuccessScreen } from '../screens/onboarding/OnboardingSuccessScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
-import { MessagesScreen } from '../screens/chat/MessagesScreen';
-import { ChatRoomScreen } from '../screens/chat/ChatRoomScreen';
-import { AvisosScreen } from '../screens/chat/AvisosScreen';
-import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
-import { ForgotPasswordScreen } from '../screens/onboarding/ForgotPasswordScreen';
+
+// ── Pantallas de Arrendador ──
+import { PublishPropertyScreen } from '../screens/landlord/PublishPropertyScreen';
+import { IdentityVerificationScreen } from '../screens/landlord/IdentityVerificationScreen';
+import { WaitingApprovalScreen } from '../screens/landlord/WaitingApprovalScreen';
+import { MyPropertiesScreen } from '../screens/landlord/MyPropertiesScreen';
+
+// ── Pantallas de Autenticación & Onboarding ──
+import { AuthModule } from '../screens/auth/AuthModule';
+import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { RoleSelectionScreen } from '../screens/auth/RoleSelectionScreen';
+import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { OnboardingSuccessScreen } from '../screens/auth/OnboardingSuccessScreen';
+import { VerifyEmailScreen } from '../screens/auth/VerifyEmailScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
+
+// ── Pantallas Compartidas (Shared) ──
+import { ProfileScreen } from '../screens/shared/ProfileScreen';
+import { MessagesScreen } from '../screens/shared/MessagesScreen';
+import { ChatRoomScreen } from '../screens/shared/ChatRoomScreen';
+import { AvisosScreen } from '../screens/shared/AvisosScreen';
+
 import { useAuth } from '../context/AuthContext';
 export { IdentityVerificationScreen as KYCScreen } from '../screens/landlord/IdentityVerificationScreen';
-import type { UserRole } from '../screens/onboarding/RoleSelectionScreen';
+import type { UserRole } from '../screens/auth/RoleSelectionScreen';
 import {
   getCurrentUser,
   setCurrentUser,
@@ -49,6 +57,7 @@ import {
   onUserRoleChange,
   onAuthStateChange,
   getAuthToken,
+  restoreSessionFromStorage,
   clearSession,
   authService,
   chatService,
@@ -772,16 +781,35 @@ function useLandlordGatekeeper(isAuthenticated: boolean) {
 
 // ── AppNavigator Raiz: Onboarding primero (con Login obligatorio si no hay token), MainApp despues ──
 export function AppNavigator() {
+  // 1. TODOS los hooks van primero, sin excepción (Reglas de Hooks de React)
   const { user, setUser } = useAuth();
   const [authToken, setAuthTokenState] = useState<string | null>(() => getAuthToken());
   const [onboardingDone, setOnboardingDone] = useState<boolean>(() => Boolean(getAuthToken()));
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+
+  // Solo mostramos la app principal si hay token y el onboarding/login fue completado
+  const showMainApp = Boolean(authToken && onboardingDone);
 
   // ── Referencia de navegación para que el hook de push pueda redirigir ──
   const navigationRef = useRef<any>(null);
   // Hook de notificaciones push — se activa automáticamente cuando hay sesión activa
   usePushNotifications(navigationRef);
 
+  // Gatekeeper para arrendadores (declarado incondicionalmente al inicio con los demás hooks)
+  const { status: landlordStatus, recheckStatus } = useLandlordGatekeeper(showMainApp);
+
   useEffect(() => {
+    let isMounted = true;
+    restoreSessionFromStorage().then((token) => {
+      if (isMounted) {
+        if (token) {
+          setAuthTokenState(token);
+          setOnboardingDone(true);
+        }
+        setIsInitializing(false);
+      }
+    });
+
     // Escuchar cambios de autenticación en tiempo real
     const unsubscribe = onAuthStateChange((token) => {
       setAuthTokenState(token);
@@ -791,7 +819,10 @@ export function AppNavigator() {
         setOnboardingDone(true);
       }
     });
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const handleLogout = () => {
@@ -805,11 +836,15 @@ export function AppNavigator() {
     setAuthTokenState(getAuthToken());
   };
 
-  // Solo mostramos la app principal si hay token y el onboarding/login fue completado
-  const showMainApp = Boolean(authToken && onboardingDone);
-
-  // Gatekeeper para arrendadores
-  const { status: landlordStatus, recheckStatus } = useLandlordGatekeeper(showMainApp);
+  // 2. Condicionales de renderizado y retornos tempranos (DESPUÉS de todos los hooks)
+  // Indicador de carga inicial mientras se recupera la sesión desde AsyncStorage
+  if (isInitializing) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.LightBG }}>
+        <ActivityIndicator size="large" color={Colors.WinePrimary} />
+      </SafeAreaView>
+    );
+  }
 
   // Paso 2: Interceptar al arrendador si no ha subido sus fotos
   const isLandlord =

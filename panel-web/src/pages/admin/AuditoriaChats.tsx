@@ -214,7 +214,7 @@ export function AuditoriaChats() {
           </div>
 
           <button
-            onClick={fetchChats}
+            onClick={() => fetchChats()}
             disabled={loadingChats}
             style={{
               display: 'flex',

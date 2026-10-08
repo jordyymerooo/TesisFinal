@@ -166,6 +166,9 @@ class AdminController extends Controller
 
             $resolveFullUrl = function ($url, $fallback) {
                 if (!$url) return $fallback;
+                if (preg_match('#https?://[^/]+/storage/(.*)#', $url, $m)) {
+                    return asset('storage/' . ltrim($m[1], '/'));
+                }
                 if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
                     return $url;
                 }
@@ -267,6 +270,9 @@ class AdminController extends Controller
 
         $resolveFullUrl = function ($url, $fallback) {
             if (!$url) return $fallback;
+            if (preg_match('#https?://[^/]+/storage/(.*)#', $url, $m)) {
+                return asset('storage/' . ltrim($m[1], '/'));
+            }
             if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
                 return $url;
             }

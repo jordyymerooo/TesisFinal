@@ -15,11 +15,16 @@ export const api = axios.create({
 
 /**
  * Interceptor de Solicitud (Request):
- * Inyecta automáticamente el Bearer Token de Sanctum guardado en localStorage.
+ * Inyecta automáticamente el Bearer Token de Sanctum guardado en sessionStorage o localStorage.
  */
 api.interceptors.request.use(
   (config) => {
+    // Busca 'auth_token' o los identificadores estándar usados en el login
     const token =
+      sessionStorage.getItem('auth_token') ||
+      sessionStorage.getItem('uleam_auth_token') ||
+      sessionStorage.getItem('token') ||
+      localStorage.getItem('auth_token') ||
       localStorage.getItem('uleam_auth_token') ||
       localStorage.getItem('token') ||
       localStorage.getItem('sanctum_token');
@@ -47,6 +52,8 @@ api.interceptors.response.use(
     if (error.response) {
       if (error.response.status === 401) {
         console.warn('[API Sanctum] Sesión no autenticada o token expirado (401)');
+        sessionStorage.clear();
+        localStorage.removeItem('auth_token');
         localStorage.removeItem('uleam_auth_token');
         localStorage.removeItem('token');
         localStorage.removeItem('sanctum_token');

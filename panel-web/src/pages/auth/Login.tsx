@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import axios from 'axios';
-import { setAuthToken } from '../services/api';
+import { setAuthToken } from '../../services/api';
 
 const WINE = '#8C1515';
 
@@ -30,8 +30,13 @@ export default function Login() {
       );
 
       const token = response.data?.token || response.data?.access_token;
+      const user = response.data?.user;
       if (token) {
         setAuthToken(token);
+        localStorage.setItem('auth_token', token);
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+        }
         navigate('/', { replace: true });
       } else {
         setError('Respuesta inválida del servidor.');

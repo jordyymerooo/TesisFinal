@@ -63,6 +63,8 @@ const envContent = [
   `EXPO_PUBLIC_API_URL=${apiUrl}`,
   `EXPO_PUBLIC_LOCAL_IP=${detectedIp}`,
   'EXPO_PUBLIC_BACKEND_PORT=8000',
+  'EXPO_PUBLIC_REVERB_APP_KEY=o2jxqqwjvgy5woej1uqv',
+  'EXPO_PUBLIC_REVERB_PORT=8080',
   '',
 ].join('\n');
 

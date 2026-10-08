@@ -14,22 +14,22 @@ import Reportes from './pages/admin/Reportes';
 import Denuncias from './pages/admin/Denuncias';
 import Avisos from './pages/admin/Avisos';
 import DetallePropiedad from './pages/admin/DetallePropiedad';
-import Login from './pages/Login';
-
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('token') || localStorage.getItem('uleam_auth_token');
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-  return <>{children}</>;
-};
+import Login from './pages/auth/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute allowedRole={3}>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Dashboard />} />
           <Route path="usuarios" element={<Usuarios />} />
           <Route path="usuarios/historial" element={<HistorialUsuarios />} />

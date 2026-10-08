@@ -41,12 +41,22 @@ export function PropertiesApproval() {
   const [properties, setProperties] = useState<PendingProperty[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [estadoActivo, setEstadoActivo] = useState('Todos'); // 'Todos', 'Pendiente', 'En Revision', 'Aprobado', 'Rechazado'
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 10;
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
     setPaginaActual(1);
+  };
+
+  const handleCardClick = (estado: string) => {
+    if (estadoActivo === estado) {
+      setEstadoActivo('Todos'); // Deseleccionar
+    } else {
+      setEstadoActivo(estado);
+    }
+    setPaginaActual(1); // Siempre regresar a la página 1 al filtrar
   };
 
   // ── Modal de Revisión ──
@@ -78,23 +88,42 @@ export function PropertiesApproval() {
   const approvedCount = properties.filter((p) => p.estado === 'publicado').length;
   const rejectedCount = properties.filter((p) => p.estado === 'rechazado').length;
 
-  // ── Filtro de búsqueda y Paginación ──
+  // ── Filtro de búsqueda, Tarjeta activa y Paginación ──
   const propiedadesFiltradas = properties.filter((prop) => {
+    // 1. Filtro de búsqueda (título, arrendador, etc.)
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const coincideTexto =
       !searchTerm ||
       prop.titulo?.toLowerCase().includes(searchLower) ||
       prop.id?.toString().toLowerCase().includes(searchLower) ||
       (prop as any).codigo?.toLowerCase().includes(searchLower) ||
       prop.arrendador?.nombres?.toLowerCase().includes(searchLower) ||
-      prop.direccion?.toLowerCase().includes(searchLower)
-    );
+      prop.direccion?.toLowerCase().includes(searchLower);
+
+    // 2. Filtro de la tarjeta activa
+    let coincideEstado = estadoActivo === 'Todos';
+    if (!coincideEstado) {
+      const estadoProp = (prop.estado || '').toLowerCase();
+      if (estadoActivo === 'Pendiente') {
+        coincideEstado = estadoProp === 'pendiente' || estadoProp === 'borrador';
+      } else if (estadoActivo === 'En Revision') {
+        coincideEstado = estadoProp === 'en_revision' || estadoProp === 'en revision';
+      } else if (estadoActivo === 'Aprobado') {
+        coincideEstado = estadoProp === 'publicado' || estadoProp === 'aprobado';
+      } else if (estadoActivo === 'Rechazado') {
+        coincideEstado = estadoProp === 'rechazado';
+      } else {
+        coincideEstado = prop.estado === estadoActivo;
+      }
+    }
+
+    return coincideTexto && coincideEstado;
   });
 
   const indiceUltimaProp = paginaActual * itemsPorPagina;
   const indicePrimeraProp = indiceUltimaProp - itemsPorPagina;
   const propiedadesPaginadas = propiedadesFiltradas.slice(indicePrimeraProp, indiceUltimaProp);
-  const totalPaginasProp = Math.ceil(propiedadesFiltradas.length / itemsPorPagina);
+  const totalPaginas = Math.ceil(propiedadesFiltradas.length / itemsPorPagina);
 
   // ── Manejador de Aprobación / Rechazo ──
   const handleUpdateStatus = async (status: 'publicado' | 'rechazado') => {
@@ -275,7 +304,7 @@ export function PropertiesApproval() {
         </button>
       </div>
 
-      {/* ── Paso 1: Barra de Estadísticas Rápidas ── */}
+      {/* ── Paso 1: Barra de Estadísticas Rápidas (Filtros Interactivos) ── */}
       <div
         style={{
           display: 'grid',
@@ -286,16 +315,12 @@ export function PropertiesApproval() {
       >
         {/* Card 1: Pendientes */}
         <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 16,
-            padding: '20px 22px',
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
+          onClick={() => handleCardClick('Pendiente')}
+          className={`bg-white rounded-xl p-5 border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+            estadoActivo === 'Pendiente'
+              ? 'border-yellow-400 ring-2 ring-yellow-100 shadow-md'
+              : 'border-gray-100 hover:shadow-md hover:border-yellow-200'
+          }`}
         >
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -313,16 +338,12 @@ export function PropertiesApproval() {
 
         {/* Card 2: En revisión */}
         <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 16,
-            padding: '20px 22px',
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
+          onClick={() => handleCardClick('En Revision')}
+          className={`bg-white rounded-xl p-5 border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+            estadoActivo === 'En Revision'
+              ? 'border-blue-400 ring-2 ring-blue-100 shadow-md'
+              : 'border-gray-100 hover:shadow-md hover:border-blue-200'
+          }`}
         >
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -340,16 +361,12 @@ export function PropertiesApproval() {
 
         {/* Card 3: Aprobadas hoy */}
         <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 16,
-            padding: '20px 22px',
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
+          onClick={() => handleCardClick('Aprobado')}
+          className={`bg-white rounded-xl p-5 border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+            estadoActivo === 'Aprobado'
+              ? 'border-green-400 ring-2 ring-green-100 shadow-md'
+              : 'border-gray-100 hover:shadow-md hover:border-green-200'
+          }`}
         >
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -367,16 +384,12 @@ export function PropertiesApproval() {
 
         {/* Card 4: Rechazadas */}
         <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 16,
-            padding: '20px 22px',
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
+          onClick={() => handleCardClick('Rechazado')}
+          className={`bg-white rounded-xl p-5 border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+            estadoActivo === 'Rechazado'
+              ? 'border-red-400 ring-2 ring-red-100 shadow-md'
+              : 'border-gray-100 hover:shadow-md hover:border-red-200'
+          }`}
         >
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -436,6 +449,64 @@ export function PropertiesApproval() {
             />
           </div>
         </div>
+
+        {estadoActivo !== 'Todos' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Filtro activo:</span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: 20,
+                backgroundColor:
+                  estadoActivo === 'Pendiente'
+                    ? '#FEF3C7'
+                    : estadoActivo === 'En Revision'
+                    ? '#DBEAFE'
+                    : estadoActivo === 'Aprobado'
+                    ? '#D1FAE5'
+                    : '#FEE2E2',
+                color:
+                  estadoActivo === 'Pendiente'
+                    ? '#B45309'
+                    : estadoActivo === 'En Revision'
+                    ? '#1D4ED8'
+                    : estadoActivo === 'Aprobado'
+                    ? '#047857'
+                    : '#B91C1C',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {estadoActivo === 'Pendiente'
+                ? 'Pendientes'
+                : estadoActivo === 'En Revision'
+                ? 'En Revisión'
+                : estadoActivo === 'Aprobado'
+                ? 'Aprobadas'
+                : 'Rechazadas'}
+              <button
+                onClick={() => {
+                  setEstadoActivo('Todos');
+                  setPaginaActual(1);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Quitar filtro"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Paso 2: Tabla de Propiedades ── */}
@@ -711,30 +782,30 @@ export function PropertiesApproval() {
           </tbody>
         </table>
 
-        {/* Footer de Paginación */}
-        {propiedadesFiltradas.length > 0 && (
-          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
-                disabled={paginaActual === 1}
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              >
-                Anterior
-              </button>
-              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
-                {paginaActual} / {totalPaginasProp || 1}
-              </div>
-              <button
-                onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginasProp))}
-                disabled={paginaActual === totalPaginasProp || totalPaginasProp === 0}
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              >
-                Siguiente
-              </button>
+        {/* Footer Estándar de Paginación (Siempre visible) */}
+        <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl w-full">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+              disabled={paginaActual === 1 || propiedadesFiltradas.length === 0}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              Anterior
+            </button>
+
+            <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+              {propiedadesFiltradas.length > 0 ? paginaActual : 0} / {totalPaginas || 1}
             </div>
+
+            <button
+              onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+              disabled={paginaActual === totalPaginas || totalPaginas === 0 || propiedadesFiltradas.length === 0}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              Siguiente
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Paso 4: Modal de Revisión y Aprobación ── */}

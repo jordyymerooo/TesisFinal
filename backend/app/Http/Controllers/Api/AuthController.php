@@ -264,4 +264,126 @@ class AuthController extends Controller
             'user'    => $user->fresh(['rol', 'perfil']),
         ]);
     }
+
+    /**
+     * DELETE /api/v1/perfil/eliminar-cuenta o /api/perfil/eliminar-cuenta
+     * Permite al usuario autenticado eliminar su cuenta y todos sus datos personales (requisito Google Play).
+     */
+    public function eliminarMiCuenta(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Usuario no encontrado.'], 404);
+        }
+
+        $idUsuario = $user->id_usuario;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user, $idUsuario) {
+            // 1. Revocar todos los tokens de Sanctum
+            $user->tokens()->delete();
+
+            // 2. Eliminar registros de auditoría si actuó como administrador
+            if (\Illuminate\Support\Facades\Schema::hasTable('registro_auditoria')) {
+                \Illuminate\Support\Facades\DB::table('registro_auditoria')
+                    ->where('id_administrador', $idUsuario)
+                    ->delete();
+            }
+
+            // 3. Eliminar verificaciones donde participó
+            if (\Illuminate\Support\Facades\Schema::hasTable('verificaciones')) {
+                \Illuminate\Support\Facades\DB::table('verificaciones')
+                    ->where('id_admin', $idUsuario)
+                    ->orWhere('id_usuario_verificado', $idUsuario)
+                    ->delete();
+            }
+
+            // 4. Eliminar notificaciones
+            if (\Illuminate\Support\Facades\Schema::hasTable('notificaciones')) {
+                \Illuminate\Support\Facades\DB::table('notificaciones')
+                    ->where('id_usuario', $idUsuario)
+                    ->orWhere('user_id', $idUsuario)
+                    ->delete();
+            }
+
+            // 5. Eliminar favoritos
+            if (\Illuminate\Support\Facades\Schema::hasTable('favoritos')) {
+                \Illuminate\Support\Facades\DB::table('favoritos')
+                    ->where('id_usuario', $idUsuario)
+                    ->delete();
+            }
+
+            // 6. Eliminar solicitudes de reserva donde fue estudiante
+            if (\Illuminate\Support\Facades\Schema::hasTable('solicitudes_reserva')) {
+                \Illuminate\Support\Facades\DB::table('solicitudes_reserva')
+                    ->where('id_estudiante', $idUsuario)
+                    ->delete();
+            }
+
+            // 7. Eliminar mensajes donde fue remitente o destinatario
+            if (\Illuminate\Support\Facades\Schema::hasTable('mensajes')) {
+                \Illuminate\Support\Facades\DB::table('mensajes')
+                    ->where('id_remitente', $idUsuario)
+                    ->orWhere('id_destinatario', $idUsuario)
+                    ->delete();
+            }
+
+            // 8. Eliminar chats donde participó
+            if (\Illuminate\Support\Facades\Schema::hasTable('chats')) {
+                \Illuminate\Support\Facades\DB::table('chats')
+                    ->where('id_estudiante', $idUsuario)
+                    ->orWhere('id_arrendador', $idUsuario)
+                    ->delete();
+            }
+
+            // 9. Si es arrendador y tiene inmuebles, eliminar sus fotos, ubicaciones, etc.
+            if (\Illuminate\Support\Facades\Schema::hasTable('inmuebles')) {
+                $inmueblesIds = \Illuminate\Support\Facades\DB::table('inmuebles')
+                    ->where('id_arrendador', $idUsuario)
+                    ->pluck('id_inmueble')
+                    ->toArray();
+
+                if (!empty($inmueblesIds)) {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('fotografias')) {
+                        \Illuminate\Support\Facades\DB::table('fotografias')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('ubicaciones')) {
+                        \Illuminate\Support\Facades\DB::table('ubicaciones')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('inmueble_servicio')) {
+                        \Illuminate\Support\Facades\DB::table('inmueble_servicio')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('solicitudes_reserva')) {
+                        \Illuminate\Support\Facades\DB::table('solicitudes_reserva')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('mensajes')) {
+                        \Illuminate\Support\Facades\DB::table('mensajes')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('chats')) {
+                        \Illuminate\Support\Facades\DB::table('chats')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('favoritos')) {
+                        \Illuminate\Support\Facades\DB::table('favoritos')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('verificaciones')) {
+                        \Illuminate\Support\Facades\DB::table('verificaciones')->whereIn('id_inmueble', $inmueblesIds)->delete();
+                    }
+                    \Illuminate\Support\Facades\DB::table('inmuebles')->where('id_arrendador', $idUsuario)->delete();
+                }
+            }
+
+            // 10. Eliminar perfil
+            if (\Illuminate\Support\Facades\Schema::hasTable('perfiles')) {
+                \Illuminate\Support\Facades\DB::table('perfiles')->where('id_usuario', $idUsuario)->delete();
+            }
+
+            // 11. Eliminar físicamente al usuario
+            $user->delete();
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tu cuenta y todos tus datos han sido eliminados correctamente.'
+        ]);
+    }
 }

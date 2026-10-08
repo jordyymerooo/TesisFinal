@@ -30,12 +30,16 @@ class Fotografia extends Model
     public function getUrlAttribute($value): string
     {
         if (!$value) return '';
+        // Si contiene /storage/ con cualquier host previo (ej: IP anterior o localhost), resolver con la IP actual
+        if (preg_match('#https?://[^/]+/storage/(.*)#', $value, $matches)) {
+            return asset('storage/' . ltrim($matches[1], '/'));
+        }
         if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
             return $value;
         }
         // path relativo tipo "inmuebles/foto.jpg" o "storage/inmuebles/foto.jpg"
         $cleanPath = ltrim(str_replace('storage/', '', $value), '/');
-        return url('storage/' . $cleanPath);
+        return asset('storage/' . $cleanPath);
     }
 
     public function inmueble()

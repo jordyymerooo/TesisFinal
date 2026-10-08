@@ -19,10 +19,17 @@ use App\Http\Controllers\Api\KYCController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
 use App\Http\Controllers\Api\PasswordResetController;
-use App\Http\Controllers\ReporteController;
-use App\Http\Controllers\ComunicadoController;
+use App\Http\Controllers\Api\AvisoController;
+use App\Http\Controllers\Api\ComunicadoController;
+use App\Http\Controllers\Api\ReporteController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+
+// ─────────────────────────────────────────────
+// BROADCASTING AUTH (Laravel Reverb + Sanctum)
+// ─────────────────────────────────────────────
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 /*
 |--------------------------------------------------------------------------
@@ -77,7 +84,16 @@ Route::prefix('v1/auth')->group(function () {
         Route::get('/user',    [AuthController::class, 'me'])->name('auth.user');
         Route::post('/profile/photo', [AuthController::class, 'updatePhoto'])->name('auth.photo');
         Route::put('/update-email',   [AuthController::class, 'updateEmail'])->name('auth.update-email');
+        Route::delete('/eliminar-cuenta', [AuthController::class, 'eliminarMiCuenta'])->name('auth.eliminar-cuenta');
     });
+});
+
+// Rutas de eliminación de cuenta para Google Play Store
+Route::middleware('auth:sanctum')->group(function () {
+    Route::delete('/perfil/eliminar-cuenta', [AuthController::class, 'eliminarMiCuenta']);
+    Route::delete('/v1/perfil/eliminar-cuenta', [AuthController::class, 'eliminarMiCuenta']);
+    Route::delete('/user/eliminar-cuenta', [AuthController::class, 'eliminarMiCuenta']);
+    Route::delete('/v1/user/eliminar-cuenta', [AuthController::class, 'eliminarMiCuenta']);
 });
 
 // ─────────────────────────────────────────────
@@ -123,9 +139,9 @@ Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/user/push-token', [UserController::class, 'registerPushToken']);
 
     // Avisos
-    Route::get('/avisos/admin', [\App\Http\Controllers\AvisoController::class, 'indexAdmin']);
-    Route::post('/avisos', [\App\Http\Controllers\AvisoController::class, 'store']);
-    Route::get('/avisos', [\App\Http\Controllers\AvisoController::class, 'indexMobile']);
+    Route::get('/avisos/admin', [AvisoController::class, 'indexAdmin']);
+    Route::post('/avisos', [AvisoController::class, 'store']);
+    Route::get('/avisos', [AvisoController::class, 'indexMobile']);
 });
 
 // RUTAS ESTRICTAS (Email verificado + KYC aprobado)
@@ -228,9 +244,9 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'role:administrador'])->group(f
 });
 
 // ─────────────────────────────────────────────
-// ADMIN DASHBOARD (rutas para panel administrativo)
+// ADMIN DASHBOARD & GESTIÓN ADMINISTRATIVA (Protegido por Sanctum + EnsureAdminRole)
 // ─────────────────────────────────────────────
-Route::prefix('v1/admin')->group(function () {
+$adminRoutes = function () {
     // Mapa administrativo
     Route::get('/map-properties', function () {
         $inmuebles = \App\Models\Inmueble::with(['arrendador:id_usuario,nombres', 'ubicacion'])
@@ -291,9 +307,12 @@ Route::prefix('v1/admin')->group(function () {
         return response()->json(['status' => 'success']);
     });
 
+    // Métricas y Analítica
     Route::get('/dashboard/metrics', [AdminController::class, 'getMetrics'])->name('admin.dashboard.metrics');
     Route::get('/reports/analytics', [AdminController::class, 'getAnalytics'])->name('admin.reports.analytics');
     Route::get('/stats', [AdminController::class, 'stats'])->name('admin.stats');
+
+    // Gestión de Usuarios
     Route::get('/usuarios', [AdminController::class, 'usuarios'])->name('admin.usuarios');
     Route::get('/usuarios/historial', [UserController::class, 'getAuditHistory']);
     Route::get('/users', [AdminController::class, 'usuarios'])->name('admin.users');
@@ -306,8 +325,9 @@ Route::prefix('v1/admin')->group(function () {
     Route::post('/usuarios/{id}', [UserController::class, 'updateAsAdmin']);
     Route::post('/usuarios/{id}/notificar', [NotificationController::class, 'sendToUser'])->name('admin.usuarios.notificar');
     Route::delete('/usuarios/{id}', [UserController::class, 'destroy'])->name('admin.usuarios.destroy');
+    Route::delete('/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
 
-    // Endpoints KYC para Arrendadores
+    // Endpoints KYC para Arrendadores y Verificaciones
     Route::get('/arrendadores/pendientes', [AdminController::class, 'getPendingLandlords'])->name('admin.arrendadores.pendientes');
     Route::get('/pending-verifications', [AdminController::class, 'getPendingLandlords'])->name('admin.pending-verifications');
     Route::get('/verificaciones/historial', [VerificacionController::class, 'getVerificationHistory'])->name('admin.verificaciones.historial');
@@ -322,20 +342,27 @@ Route::prefix('v1/admin')->group(function () {
     Route::patch('/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar'])->name('admin.arrendadores.rechazar');
     Route::post('/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
 
+    // Moderación de fotos de perfil
+    Route::get('/moderacion/fotos', [AdminController::class, 'getFotosPerfil']);
+    Route::delete('/moderacion/fotos/{id}', [AdminController::class, 'deleteFotoPerfil']);
+
     // Auditoría de Mensajes y Conversaciones
     Route::get('/chats', [ChatController::class, 'adminIndex'])->name('admin.chats.index');
     Route::get('/chats/{chat_id}/mensajes', [ChatController::class, 'adminMessages'])->name('admin.chats.messages');
 
     // Reportes y Analítica
     Route::get('/reportes/estadisticas', [ReportController::class, 'getStats'])->name('admin.reportes.stats');
+    Route::get('/reportes', [ReporteController::class, 'index'])->name('admin.reportes.index');
+    Route::patch('/reportes/{id}/estado', [ReporteController::class, 'resolver'])->name('admin.reportes.resolver');
+    Route::post('/reportes/{id}/estado', [ReporteController::class, 'resolver']);
 
+    // Inmuebles Administrativo
     Route::get('/inmuebles/pendientes', function () {
         $pendientes = \App\Models\Inmueble::with(['arrendador.perfil', 'ubicacion', 'fotografias'])
             ->whereIn('estado', ['borrador', 'en_revision', 'pendiente'])
             ->orderByDesc('created_at')
             ->get();
 
-        // Si no hay borradores, traer también inmuebles para fines de demo interactiva
         if ($pendientes->isEmpty()) {
             $pendientes = \App\Models\Inmueble::with(['arrendador.perfil', 'ubicacion', 'fotografias'])
                 ->orderByDesc('created_at')
@@ -391,7 +418,6 @@ Route::prefix('v1/admin')->group(function () {
         $inmueble = \App\Models\Inmueble::findOrFail($id);
         $inmueble->estado = $request->input('estado');
 
-        // Si se está aprobando (publicando), registrar quién aprobó y cuándo
         if ($request->input('estado') === 'publicado') {
             $admin = $request->user() ?? auth('sanctum')->user();
             $inmueble->aprobado_por = $admin?->id_usuario;
@@ -407,7 +433,6 @@ Route::prefix('v1/admin')->group(function () {
         ]);
     })->name('admin.inmuebles.estado');
 
-    // Eliminar inmueble desde el panel de administración
     Route::delete('/inmuebles/{id}', function ($id) {
         $inmueble = \App\Models\Inmueble::findOrFail($id);
         $inmueble->delete();
@@ -417,9 +442,17 @@ Route::prefix('v1/admin')->group(function () {
         ]);
     })->name('admin.inmuebles.delete');
 
-    // Historial de aprobaciones: propiedades publicadas con info del admin aprobador
     Route::get('/inmuebles/historial', [InmuebleController::class, 'historialAprobaciones'])->name('admin.inmuebles.historial');
-});
+
+    // Comunicados Oficiales (Admin)
+    Route::post('/comunicados', [ComunicadoController::class, 'store'])->name('admin.comunicados.store');
+    Route::get('/comunicados', [ComunicadoController::class, 'index'])->name('admin.comunicados.index');
+    Route::get('/usuarios-verificados', [ComunicadoController::class, 'getUsuariosVerificados'])->name('admin.usuarios-verificados');
+};
+
+// Rutas administrativas protegidas bajo prefijos /api/admin y /api/v1/admin
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group($adminRoutes);
+Route::middleware(['auth:sanctum', 'admin'])->prefix('v1/admin')->group($adminRoutes);
 
 // ─────────────────────────────────────────────
 // ROLES (público — para formulario de registro)
@@ -519,65 +552,15 @@ Route::prefix('v1/notificaciones')->middleware('auth:sanctum')->group(function (
     Route::patch('/leer-todas',  [NotificacionController::class, 'update'])->name('notificaciones.readall');
 });
 
-Route::prefix('admin')->group(function () {
-    Route::post('/usuarios', [UserController::class, 'storeAsAdmin']);
-    Route::delete('/usuarios/{id}', [UserController::class, 'destroy']);
-    Route::get('/chats', [ChatController::class, 'adminIndex']);
-    Route::get('/chats/{chat_id}/mensajes', [ChatController::class, 'adminMessages']);
-    Route::post('/usuarios/{id}/notificar', [NotificationController::class, 'sendToUser']);
-    Route::get('/reportes/estadisticas', [ReportController::class, 'getStats']);
-    Route::get('/verificaciones/{id}', [AdminController::class, 'showVerification']);
-});
-
-Route::post('/admin/usuarios', [UserController::class, 'storeAsAdmin']);
-Route::delete('/admin/usuarios/{id}', [UserController::class, 'destroy']);
-Route::delete('/admin/usuarios/{id}/foto', [UserController::class, 'removeFotoAsAdmin']);
-Route::get('/admin/verificaciones/historial', [VerificacionController::class, 'getVerificationHistory']);
-Route::get('/admin/arrendadores/historial', [VerificacionController::class, 'getVerificationHistory']);
-Route::get('/admin/verificaciones/{id}', [AdminController::class, 'showVerification'])->whereNumber('id');
-Route::patch('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
-Route::post('/admin/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
-Route::patch('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
-Route::post('/admin/arrendadores/{id}/aprobar', [AdminController::class, 'approveLandlord']);
-Route::patch('/admin/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
-Route::post('/admin/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
-Route::patch('/admin/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
-Route::post('/admin/arrendadores/{id}/rechazar', [VerificacionController::class, 'rechazar']);
-
-// Moderación de fotos de perfil
-Route::get('/admin/moderacion/fotos', [AdminController::class, 'getFotosPerfil']);
-Route::delete('/admin/moderacion/fotos/{id}', [AdminController::class, 'deleteFotoPerfil']);
-Route::get('/v1/admin/moderacion/fotos', [AdminController::class, 'getFotosPerfil']);
-Route::delete('/v1/admin/moderacion/fotos/{id}', [AdminController::class, 'deleteFotoPerfil']);
-
 // Endpoint móvil para listar notificaciones del usuario
 Route::get('/v1/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('v1.mis-notificaciones');
 Route::get('/mis-notificaciones', [NotificationController::class, 'misNotificaciones'])->name('mis-notificaciones');
 
 // ─────────────────────────────────────────────
-// SISTEMA DE REPORTES Y DENUNCIAS
+// SISTEMA DE REPORTES Y DENUNCIAS (Móvil / Estudiante)
 // ─────────────────────────────────────────────
 Route::post('/reportes', [ReporteController::class, 'store'])->middleware('auth:sanctum');
 Route::post('/v1/reportes', [ReporteController::class, 'store'])->middleware('auth:sanctum');
-
-Route::get('/admin/reportes', [ReporteController::class, 'index'])->middleware(['auth:sanctum', 'admin']);
-Route::get('/v1/admin/reportes', [ReporteController::class, 'index'])->middleware(['auth:sanctum', 'admin']);
-
-Route::patch('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
-Route::post('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
-Route::patch('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
-Route::post('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
-
-// ─────────────────────────────────────────────
-// COMUNICADOS OFICIALES
-// ─────────────────────────────────────────────
-Route::post('/admin/comunicados', [ComunicadoController::class, 'store'])->middleware('auth:sanctum');
-Route::get('/admin/comunicados', [ComunicadoController::class, 'index'])->middleware('auth:sanctum');
-Route::post('/v1/admin/comunicados', [ComunicadoController::class, 'store'])->middleware('auth:sanctum');
-Route::get('/v1/admin/comunicados', [ComunicadoController::class, 'index'])->middleware('auth:sanctum');
-
-Route::get('/admin/usuarios-verificados', [ComunicadoController::class, 'getUsuariosVerificados'])->middleware('auth:sanctum');
-Route::get('/v1/admin/usuarios-verificados', [ComunicadoController::class, 'getUsuariosVerificados'])->middleware('auth:sanctum');
 
 // Para lectura pública o móvil
 Route::get('/comunicados', [ComunicadoController::class, 'index']);

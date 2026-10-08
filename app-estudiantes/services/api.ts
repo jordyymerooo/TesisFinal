@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Configuración de Axios para ULEAM Alojamiento Estudiantil
@@ -43,6 +44,11 @@ export const onUserRoleChange = (listener: RoleListener) => {
 
 export const setAuthToken = (token: string | null) => {
   authToken = token;
+  if (token) {
+    AsyncStorage.setItem('auth_token', token).catch(() => {});
+  } else {
+    AsyncStorage.removeItem('auth_token').catch(() => {});
+  }
   authListeners.forEach((fn) => fn(token));
 };
 
@@ -51,6 +57,7 @@ export const getAuthToken = () => authToken;
 export const setCurrentUser = (user: any) => {
   currentUser = user;
   if (user) {
+    AsyncStorage.setItem('user', JSON.stringify(user)).catch(() => {});
     currentUserIdRol = user.id_rol ?? (user.rol?.id_rol ?? null);
     if (user.rol?.nombre) {
       currentUserRole = user.rol.nombre.toLowerCase();
@@ -60,6 +67,7 @@ export const setCurrentUser = (user: any) => {
       currentUserRole = 'estudiante';
     }
   } else {
+    AsyncStorage.removeItem('user').catch(() => {});
     currentUser = null;
     currentUserRole = null;
     currentUserIdRol = null;
@@ -74,6 +82,40 @@ export const getCurrentUserIdRol = () => currentUserIdRol;
 export const clearSession = () => {
   setAuthToken(null);
   setCurrentUser(null);
+  AsyncStorage.multiRemove(['auth_token', 'user']).catch(() => {});
+};
+
+/**
+ * Restaura la sesión desde AsyncStorage al iniciar la aplicación móvil
+ */
+export const restoreSessionFromStorage = async (): Promise<string | null> => {
+  try {
+    const token = await AsyncStorage.getItem('auth_token');
+    const userStr = await AsyncStorage.getItem('user');
+    if (token) {
+      authToken = token;
+      if (userStr) {
+        try {
+          const userObj = JSON.parse(userStr);
+          currentUser = userObj;
+          currentUserIdRol = userObj.id_rol ?? (userObj.rol?.id_rol ?? null);
+          if (userObj.rol?.nombre) {
+            currentUserRole = userObj.rol.nombre.toLowerCase();
+          } else if (currentUserIdRol === 2) {
+            currentUserRole = 'arrendador';
+          } else if (currentUserIdRol === 1) {
+            currentUserRole = 'estudiante';
+          }
+        } catch {}
+      }
+      authListeners.forEach((fn) => fn(token));
+      roleListeners.forEach((fn) => fn(currentUserRole, currentUserIdRol, currentUser));
+      return token;
+    }
+  } catch (e) {
+    console.warn('[restoreSessionFromStorage] Error:', e);
+  }
+  return null;
 };
 
 export const apiClient: AxiosInstance = axios.create({
@@ -89,19 +131,30 @@ export const api = apiClient;
 
 // Interceptor para inyectar token Sanctum
 apiClient.interceptors.request.use(
-  (config) => {
-    if (authToken && config.headers) {
-      config.headers.Authorization = `Bearer ${authToken}`;
+  async (config) => {
+    let token = authToken;
+    if (!token) {
+      try {
+        token = await AsyncStorage.getItem('auth_token');
+        if (token) authToken = token;
+      } catch {}
+    }
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Interceptor de respuesta para manejo uniforme de errores
+// Interceptor de respuesta para manejo uniforme de errores y logout automático en 401
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      console.warn('[API Mobile] Token expirado o no autorizado (401). Limpiando sesión...');
+      clearSession();
+    }
     const message =
       error.response?.data?.message ||
       error.message ||

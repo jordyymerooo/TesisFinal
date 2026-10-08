@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Models\Comunicado;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +45,7 @@ class ComunicadoController extends Controller
      */
     public function getUsuariosVerificados(): JsonResponse
     {
-        $usuarios = \App\Models\User::where(function ($query) {
+        $usuarios = User::where(function ($query) {
                 $query->where('estado_kyc', 'aprobado')
                       ->orWhere('id_rol', 1) // Estudiantes
                       ->orWhereHas('perfil', function ($q) {

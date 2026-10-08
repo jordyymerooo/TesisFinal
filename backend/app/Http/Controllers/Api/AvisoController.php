@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Aviso;
 use Illuminate\Support\Facades\Auth;
@@ -38,7 +39,7 @@ class AvisoController extends Controller
 
     public function indexMobile()
     {
-        $userId = Auth::id(); // En mi app_estudiantes, la autenticación es mediante Sanctum y el PK de usuario es id_usuario.
+        $userId = Auth::id(); // En app_estudiantes, autenticación mediante Sanctum, PK id_usuario.
         
         $avisos = Aviso::where('tipo', 'global')
             ->orWhere(function($query) use ($userId) {

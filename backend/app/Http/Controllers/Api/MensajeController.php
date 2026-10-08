@@ -163,6 +163,20 @@ class MensajeController extends Controller
             'fecha'           => now(),
         ]);
 
+        $mensaje->load([
+            'remitente.perfil',
+            'destinatario.perfil',
+            'inmueble:id_inmueble,titulo',
+        ]);
+
+        // ── Emitir Evento en Tiempo Real (Laravel Reverb WebSockets) ───────
+        try {
+            broadcast(new \App\Events\MensajeEnviado($mensaje));
+        } catch (\Throwable $e) {
+            \Log::warning('[MensajeController] Error emitiendo broadcast WebSocket: ' . $e->getMessage());
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         // ── Notificación Push al Destinatario ──────────────────────────────
         try {
             $destinatario = User::find($data['id_destinatario']);
@@ -192,11 +206,7 @@ class MensajeController extends Controller
 
         return response()->json([
             'message' => 'Mensaje enviado.',
-            'data'    => $mensaje->load([
-                'remitente.perfil',
-                'destinatario.perfil',
-                'inmueble:id_inmueble,titulo',
-            ]),
+            'data'    => $mensaje,
         ], 201);
     }
 
