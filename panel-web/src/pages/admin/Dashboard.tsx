@@ -74,6 +74,12 @@ const DEFAULT_STATS: StatItem[] = [
 ];
 
 export function Dashboard() {
+  const [metrics, setMetrics] = useState({
+    usuarios_totales: 0,
+    inmuebles_activos: 0,
+    reservas_activas: 0,
+    reportes_pendientes: 0,
+  });
   const [stats, setStats] = useState<StatItem[]>(DEFAULT_STATS);
   const [loading, setLoading] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<string>(
@@ -83,46 +89,55 @@ export function Dashboard() {
   const fetchDashboardStats = async () => {
     setLoading(true);
     try {
-      const statsRes = await api.get('/admin/stats');
-      if (statsRes.data?.data) {
-        const d = statsRes.data.data;
+      // 1. Consultar nuevo endpoint de métricas reales
+      const metricsRes = await api.get('/admin/dashboard/metrics');
+      const data = metricsRes.data?.data;
+
+      if (data) {
+        setMetrics({
+          usuarios_totales: Number(data.usuarios_totales || 0),
+          inmuebles_activos: Number(data.inmuebles_activos || 0),
+          reservas_activas: Number(data.reservas_activas || 0),
+          reportes_pendientes: Number(data.reportes_pendientes || 0),
+        });
+
         setStats([
           {
             title: 'Usuarios Totales',
-            value: Number(d.usuarios_activos || 1284).toLocaleString(),
-            change: d.usuarios_activos_trend || '+12.5%',
+            value: Number(data.usuarios_totales || 0).toLocaleString(),
+            change: '+12.5%',
             trend: 'up',
-            subtitle: 'vs. mes anterior',
+            subtitle: 'Usuarios registrados actualmente en el sistema',
             icon: Users,
             iconColor: '#3B82F6',
             iconBg: '#EFF6FF',
           },
           {
             title: 'Inmuebles Activos',
-            value: Number(d.propiedades_publicadas || 342).toLocaleString(),
-            change: d.propiedades_trend || '+8.2%',
+            value: Number(data.inmuebles_activos || 0).toLocaleString(),
+            change: '+8.2%',
             trend: 'up',
-            subtitle: 'vs. mes anterior',
+            subtitle: 'Propiedades publicadas y visibles en el mapa',
             icon: Building2,
             iconColor: WINE,
             iconBg: 'rgba(140, 21, 21, 0.08)',
           },
           {
             title: 'Reservas Activas',
-            value: Number(d.reservas_activas || 89).toLocaleString(),
-            change: d.reservas_trend || '+24.0%',
+            value: Number(data.reservas_activas || 0).toLocaleString(),
+            change: '+24.0%',
             trend: 'up',
-            subtitle: 'semestre actual',
+            subtitle: 'Solicitudes en proceso o aceptadas',
             icon: CalendarCheck,
             iconColor: '#10B981',
             iconBg: '#ECFDF5',
           },
           {
             title: 'Reportes Pendientes',
-            value: Number(d.reportes_pendientes || 3).toLocaleString(),
-            change: d.reportes_trend || '-50%',
-            trend: 'down',
-            subtitle: 'atención requerida',
+            value: Number(data.reportes_pendientes || 0).toLocaleString(),
+            change: data.reportes_pendientes > 0 ? `${data.reportes_pendientes} req.` : '0 req.',
+            trend: data.reportes_pendientes > 0 ? 'down' : 'up',
+            subtitle: 'Denuncias que requieren atención administrativa',
             icon: AlertTriangle,
             iconColor: '#F59E0B',
             iconBg: '#FFFBEB',
@@ -130,7 +145,57 @@ export function Dashboard() {
         ]);
       }
     } catch (err) {
-      console.warn('[Dashboard API] Error al obtener /admin/stats, usando valores de respaldo:', err);
+      console.warn('[Dashboard API] Error al obtener /admin/dashboard/metrics, consultando /admin/stats:', err);
+      try {
+        const statsRes = await api.get('/admin/stats');
+        if (statsRes.data?.data) {
+          const d = statsRes.data.data;
+          setStats([
+            {
+              title: 'Usuarios Totales',
+              value: Number(d.usuarios_activos || 0).toLocaleString(),
+              change: d.usuarios_activos_trend || '+12.5%',
+              trend: 'up',
+              subtitle: 'registrados en sistema',
+              icon: Users,
+              iconColor: '#3B82F6',
+              iconBg: '#EFF6FF',
+            },
+            {
+              title: 'Inmuebles Activos',
+              value: Number(d.propiedades_publicadas || 0).toLocaleString(),
+              change: d.propiedades_trend || '+8.2%',
+              trend: 'up',
+              subtitle: 'publicados y activos',
+              icon: Building2,
+              iconColor: WINE,
+              iconBg: 'rgba(140, 21, 21, 0.08)',
+            },
+            {
+              title: 'Reservas Activas',
+              value: Number(d.reservas_activas || 0).toLocaleString(),
+              change: d.reservas_trend || '+24.0%',
+              trend: 'up',
+              subtitle: 'en proceso o aceptadas',
+              icon: CalendarCheck,
+              iconColor: '#10B981',
+              iconBg: '#ECFDF5',
+            },
+            {
+              title: 'Reportes Pendientes',
+              value: Number(d.reportes_pendientes || 0).toLocaleString(),
+              change: d.reportes_trend || '0',
+              trend: 'down',
+              subtitle: 'atención requerida',
+              icon: AlertTriangle,
+              iconColor: '#F59E0B',
+              iconBg: '#FFFBEB',
+            },
+          ]);
+        }
+      } catch (backupErr) {
+        console.warn('[Dashboard API] Error secundario:', backupErr);
+      }
     } finally {
       setLoading(false);
       setLastUpdated('Hoy, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -267,26 +332,10 @@ export function Dashboard() {
 
               <div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 6 }}>
-                  {stat.value}
+                  {loading ? '...' : stat.value}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 2,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: isUp ? '#059669' : '#D97706',
-                      background: isUp ? '#ECFDF5' : '#FFFBEB',
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                    }}
-                  >
-                    {isUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                    {stat.change}
-                  </span>
-                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>{stat.subtitle}</span>
+                <div className="mt-4 flex items-center text-sm text-gray-500">
+                  <span>{stat.subtitle}</span>
                 </div>
               </div>
             </div>

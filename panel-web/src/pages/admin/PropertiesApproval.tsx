@@ -24,6 +24,7 @@ import {
 import {
   getPendingProperties,
   updatePropertyStatus,
+  deleteProperty,
   PendingProperty,
 } from '../../services/api';
 
@@ -39,7 +40,14 @@ export function PropertiesApproval() {
   // ── Datos de Propiedades ──
   const [properties, setProperties] = useState<PendingProperty[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [filterSearch, setFilterSearch] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 10;
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPaginaActual(1);
+  };
 
   // ── Modal de Revisión ──
   const [selectedProperty, setSelectedProperty] = useState<PendingProperty | null>(null);
@@ -70,16 +78,23 @@ export function PropertiesApproval() {
   const approvedCount = properties.filter((p) => p.estado === 'publicado').length;
   const rejectedCount = properties.filter((p) => p.estado === 'rechazado').length;
 
-  // ── Filtro de búsqueda ──
-  const filteredProperties = properties.filter((p) => {
-    const term = filterSearch.toLowerCase();
+  // ── Filtro de búsqueda y Paginación ──
+  const propiedadesFiltradas = properties.filter((prop) => {
+    const searchLower = searchTerm.toLowerCase();
     return (
-      p.titulo.toLowerCase().includes(term) ||
-      p.arrendador.nombres.toLowerCase().includes(term) ||
-      p.direccion.toLowerCase().includes(term) ||
-      String(p.id).includes(term)
+      !searchTerm ||
+      prop.titulo?.toLowerCase().includes(searchLower) ||
+      prop.id?.toString().toLowerCase().includes(searchLower) ||
+      (prop as any).codigo?.toLowerCase().includes(searchLower) ||
+      prop.arrendador?.nombres?.toLowerCase().includes(searchLower) ||
+      prop.direccion?.toLowerCase().includes(searchLower)
     );
   });
+
+  const indiceUltimaProp = paginaActual * itemsPorPagina;
+  const indicePrimeraProp = indiceUltimaProp - itemsPorPagina;
+  const propiedadesPaginadas = propiedadesFiltradas.slice(indicePrimeraProp, indiceUltimaProp);
+  const totalPaginasProp = Math.ceil(propiedadesFiltradas.length / itemsPorPagina);
 
   // ── Manejador de Aprobación / Rechazo ──
   const handleUpdateStatus = async (status: 'publicado' | 'rechazado') => {
@@ -117,9 +132,54 @@ export function PropertiesApproval() {
     }
   };
 
-  if (selectedProperty) {
-    console.log('[PropertiesApproval] Propiedad seleccionada:', selectedProperty);
-  }
+  // ── Manejador para Eliminar Propiedad Publicada ──
+  const handleEliminarPropiedad = async () => {
+    if (!selectedProperty) return;
+
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que deseas eliminar permanentemente la propiedad #${selectedProperty.id} (${selectedProperty.titulo})?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setActionLoading(true);
+      await deleteProperty(selectedProperty.id);
+
+      // Remover de la lista reactivamente
+      setProperties((prev) => prev.filter((p) => p.id !== selectedProperty.id));
+
+      setNotification({
+        message: `Propiedad #${selectedProperty.id} ha sido eliminada exitosamente.`,
+        type: 'success',
+      });
+
+      setModalOpen(false);
+      setSelectedProperty(null);
+
+      setTimeout(() => setNotification(null), 4000);
+    } catch (error: any) {
+      console.error('[PropertiesApproval] Error al eliminar propiedad:', error);
+      alert(error?.response?.data?.message || error?.message || 'Error al eliminar la propiedad.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ── Generar URL de Google Maps forzando PIN rojo exacto con coordenadas ──
+  const getGoogleMapsUrl = (propiedad: any) => {
+    // Ajusta 'latitud' y 'longitud' según cómo lleguen desde tu API de Laravel
+    const lat = propiedad.latitud || propiedad.lat; 
+    const lng = propiedad.longitud || propiedad.lng;
+
+    if (lat && lng) {
+      // Este formato fuerza un PIN rojo en las coordenadas exactas sin mostrar listas
+      return `https://maps.google.com/?q=${lat},${lng}`;
+    }
+
+    // Fallback solo en caso de que la propiedad antigua no tenga coordenadas guardadas
+    const query = encodeURIComponent(`${propiedad.direccion || propiedad.sector || ''}, Manta, Ecuador`.trim());
+    return `https://www.google.com/maps/search/?api=1&query=${query}`;
+  };
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -363,8 +423,8 @@ export function PropertiesApproval() {
             <input
               type="text"
               placeholder="Filtrar por título, ID o arrendador..."
-              value={filterSearch}
-              onChange={(e) => setFilterSearch(e.target.value)}
+              value={searchTerm}
+              onChange={handleSearchChange}
               style={{
                 border: 'none',
                 background: 'transparent',
@@ -375,12 +435,6 @@ export function PropertiesApproval() {
               }}
             />
           </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 12, color: '#6B7280', fontWeight: 600 }}>
-            Mostrando {filteredProperties.length} de {properties.length} propiedades
-          </span>
         </div>
       </div>
 
@@ -428,7 +482,7 @@ export function PropertiesApproval() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#4B5563' }}>Cargando propiedades...</div>
                 </td>
               </tr>
-            ) : filteredProperties.length === 0 ? (
+            ) : propiedadesFiltradas.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: '48px 20px', textAlign: 'center' }}>
                   <Building2 size={36} color="#9CA3AF" style={{ margin: '0 auto 12px' }} />
@@ -439,7 +493,7 @@ export function PropertiesApproval() {
                 </td>
               </tr>
             ) : (
-              filteredProperties.map((prop) => {
+              propiedadesPaginadas.map((prop) => {
                 const isPending = prop.estado === 'borrador' || prop.estado === 'pendiente';
                 const isPublished = prop.estado === 'publicado';
                 const isRejected = prop.estado === 'rechazado';
@@ -656,6 +710,31 @@ export function PropertiesApproval() {
             )}
           </tbody>
         </table>
+
+        {/* Footer de Paginación */}
+        {propiedadesFiltradas.length > 0 && (
+          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+                {paginaActual} / {totalPaginasProp || 1}
+              </div>
+              <button
+                onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginasProp))}
+                disabled={paginaActual === totalPaginasProp || totalPaginasProp === 0}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Paso 4: Modal de Revisión y Aprobación ── */}
@@ -769,9 +848,28 @@ export function PropertiesApproval() {
               <h4 style={{ margin: '0 0 6px 0', fontSize: 17, fontWeight: 800, color: '#111827' }}>
                 {selectedProperty.titulo}
               </h4>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#4B5563', marginBottom: 16 }}>
-                <MapPin size={14} color={WINE} />
-                <span>{selectedProperty.direccion}</span>
+              {/* Dirección interactiva con enlace directo a Google Maps */}
+              <div className="mb-4">
+                <a
+                  href={getGoogleMapsUrl(selectedProperty)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group inline-flex items-start gap-2 p-2 -ml-2 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                  title="Ver ubicación en Google Maps"
+                >
+                  <MapPin size={18} className="text-red-600 mt-0.5 group-hover:scale-110 transition-transform shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-600 group-hover:underline flex items-center gap-1.5">
+                      Ver ubicación en el mapa
+                      <ExternalLink size={13} className="inline opacity-70 group-hover:opacity-100" />
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {selectedProperty.sector && selectedProperty.referencia
+                        ? `${selectedProperty.sector} - ${selectedProperty.referencia}`
+                        : selectedProperty.direccion}
+                    </p>
+                  </div>
+                </a>
               </div>
 
               {/* Tarjeta del Arrendador */}
@@ -863,77 +961,58 @@ export function PropertiesApproval() {
 
             {/* Footer Fijo con Botones de Acción */}
             <div style={{ padding: '20px 24px', borderTop: '1px solid #E5E7EB', backgroundColor: '#FFFFFF' }}>
-              {/* Pregunta de Confirmación */}
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '12px 16px',
-                  backgroundColor: WINE_LIGHT,
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: WINE,
-                  marginBottom: 16,
-                }}
-              >
-                ¿Deseas aprobar y publicar esta propiedad en el mapa móvil estudiantil?
-              </div>
-
-              {/* Botones de Acción */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={() => handleUpdateStatus('rechazado')}
-                  disabled={actionLoading}
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#FFFFFF',
-                    color: '#EF4444',
-                    border: '1.5px solid #FCA5A5',
-                    borderRadius: 10,
-                    padding: '12px 0',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: actionLoading ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <X size={16} />
-                  Rechazar
-                </button>
-
-                <button
-                  onClick={() => handleUpdateStatus('publicado')}
-                  disabled={actionLoading}
-                  style={{
-                    flex: 2,
-                    backgroundColor: WINE,
-                    color: '#FFFFFF',
-                    border: 'none',
-                    borderRadius: 10,
-                    padding: '12px 0',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: actionLoading ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    boxShadow: '0 4px 12px rgba(140, 21, 21, 0.25)',
-                  }}
-                >
-                  {actionLoading ? (
-                    <RefreshCw size={16} color="#FFFFFF" style={{ animation: 'spin 1s linear infinite' }} />
-                  ) : (
-                    <>
-                      <Check size={18} />
-                      Aprobar y Publicar
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Renderizado Condicional de Acciones */}
+              {selectedProperty.estado?.toLowerCase() === 'pendiente' ||
+              selectedProperty.estado?.toLowerCase() === 'en_revision' ||
+              selectedProperty.estado?.toLowerCase() === 'borrador' ? (
+                <>
+                  <div className="bg-red-50 p-3 rounded-lg text-center mb-4">
+                    <p className="text-sm font-semibold text-red-800">
+                      ¿Deseas aprobar y publicar esta propiedad en el mapa móvil estudiantil?
+                    </p>
+                  </div>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => handleUpdateStatus('rechazado')}
+                      disabled={actionLoading}
+                      className="flex-1 py-2 border border-red-600 text-red-600 rounded-lg font-semibold hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      ✕ Rechazar
+                    </button>
+                    <button 
+                      onClick={() => handleUpdateStatus('publicado')}
+                      disabled={actionLoading}
+                      className="flex-1 py-2 bg-red-800 text-white rounded-lg font-semibold hover:bg-red-900 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+                    >
+                      {actionLoading ? <RefreshCw size={16} className="animate-spin" /> : '✓ Aprobar y Publicar'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-green-50 p-3 rounded-lg text-center mb-4 border border-green-200">
+                    <p className="text-sm font-semibold text-green-800 flex items-center justify-center gap-2">
+                      <span>✓</span> Esta propiedad ya se encuentra publicada y visible.
+                    </p>
+                  </div>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setModalOpen(false)}
+                      disabled={actionLoading}
+                      className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                    >
+                      Cerrar Detalles
+                    </button>
+                    <button 
+                      onClick={handleEliminarPropiedad}
+                      disabled={actionLoading}
+                      className="flex-1 py-2 border border-red-600 text-red-600 rounded-lg font-semibold hover:bg-red-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {actionLoading ? <RefreshCw size={16} className="animate-spin" /> : <><span>🗑️</span> Eliminar Publicación</>}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

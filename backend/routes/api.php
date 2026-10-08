@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VerificacionController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\ComunicadoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -195,6 +196,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function ()
 Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function () {
     // Listado de conversaciones activas
     Route::get('/mensajes/conversaciones',                  [MensajeController::class, 'conversaciones'])->name('mensajes.conversaciones');
+    Route::get('/chats/unread-count',                       [ChatController::class, 'getUnreadCount'])->name('chats.unread-count');
+    Route::get('/mensajes/unread-count',                    [ChatController::class, 'getUnreadCount'])->name('mensajes.unread-count');
     
     // Historial con otro usuario específico
     Route::get('/mensajes/{otro_usuario_id}',               [MensajeController::class, 'chatConUsuario'])->name('mensajes.chat');
@@ -204,6 +207,12 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'verified'])->group(function ()
 
     // Hilo de conversación contextualizado por inmueble
     Route::get('/mensajes/hilo/{idInmueble}/{idUsuario}',  [MensajeController::class, 'hilo'])->name('mensajes.hilo');
+});
+
+// Ruta de conteo no leídos disponible también sin prefijo v1
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/chats/unread-count',                       [ChatController::class, 'getUnreadCount']);
+    Route::get('/mensajes/unread-count',                    [ChatController::class, 'getUnreadCount']);
 });
 
 // ─────────────────────────────────────────────
@@ -282,6 +291,8 @@ Route::prefix('v1/admin')->group(function () {
         return response()->json(['status' => 'success']);
     });
 
+    Route::get('/dashboard/metrics', [AdminController::class, 'getMetrics'])->name('admin.dashboard.metrics');
+    Route::get('/reports/analytics', [AdminController::class, 'getAnalytics'])->name('admin.reports.analytics');
     Route::get('/stats', [AdminController::class, 'stats'])->name('admin.stats');
     Route::get('/usuarios', [AdminController::class, 'usuarios'])->name('admin.usuarios');
     Route::get('/usuarios/historial', [UserController::class, 'getAuditHistory']);
@@ -347,6 +358,13 @@ Route::prefix('v1/admin')->group(function () {
                 'estado'      => $inm->estado,
                 'fecha'       => $inm->created_at ? $inm->created_at->format('d M Y, H:i') : '15 Sep 2026',
                 'direccion'   => $ub ? trim(($ub->sector ? $ub->sector . ', ' : '') . ($ub->direccion_referencial ?? 'Manta')) : 'Manta, Manabí',
+                'sector'      => $ub?->sector,
+                'referencia'  => $ub?->direccion_referencial,
+                'latitud'     => $ub && $ub->latitud !== null ? (float) $ub->latitud : null,
+                'longitud'    => $ub && $ub->longitud !== null ? (float) $ub->longitud : null,
+                'lat'         => $ub && $ub->latitud !== null ? (float) $ub->latitud : null,
+                'lng'         => $ub && $ub->longitud !== null ? (float) $ub->longitud : null,
+                'distancia_uleam_km' => $ub ? (float) $ub->distancia_uleam_km : null,
                 'foto_url'    => $foto?->url ?? 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=400&q=80',
                 'fotos'       => $inm->fotografias->map(function($f) { return ['id' => $f->id_fotografia, 'url' => $f->url]; })->toArray(),
                 'arrendador'  => [
@@ -388,6 +406,16 @@ Route::prefix('v1/admin')->group(function () {
             'inmueble' => $inmueble->fresh(['arrendador', 'ubicacion', 'fotografias']),
         ]);
     })->name('admin.inmuebles.estado');
+
+    // Eliminar inmueble desde el panel de administración
+    Route::delete('/inmuebles/{id}', function ($id) {
+        $inmueble = \App\Models\Inmueble::findOrFail($id);
+        $inmueble->delete();
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Inmueble eliminado exitosamente.',
+        ]);
+    })->name('admin.inmuebles.delete');
 
     // Historial de aprobaciones: propiedades publicadas con info del admin aprobador
     Route::get('/inmuebles/historial', [InmuebleController::class, 'historialAprobaciones'])->name('admin.inmuebles.historial');
@@ -539,4 +567,21 @@ Route::patch('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver
 Route::post('/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
 Route::patch('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
 Route::post('/v1/admin/reportes/{id}/estado', [ReporteController::class, 'resolver'])->middleware(['auth:sanctum', 'admin']);
+
+// ─────────────────────────────────────────────
+// COMUNICADOS OFICIALES
+// ─────────────────────────────────────────────
+Route::post('/admin/comunicados', [ComunicadoController::class, 'store'])->middleware('auth:sanctum');
+Route::get('/admin/comunicados', [ComunicadoController::class, 'index'])->middleware('auth:sanctum');
+Route::post('/v1/admin/comunicados', [ComunicadoController::class, 'store'])->middleware('auth:sanctum');
+Route::get('/v1/admin/comunicados', [ComunicadoController::class, 'index'])->middleware('auth:sanctum');
+
+Route::get('/admin/usuarios-verificados', [ComunicadoController::class, 'getUsuariosVerificados'])->middleware('auth:sanctum');
+Route::get('/v1/admin/usuarios-verificados', [ComunicadoController::class, 'getUsuariosVerificados'])->middleware('auth:sanctum');
+
+// Para lectura pública o móvil
+Route::get('/comunicados', [ComunicadoController::class, 'index']);
+Route::get('/v1/comunicados', [ComunicadoController::class, 'index']);
+Route::get('/comunicados/mis-comunicados', [ComunicadoController::class, 'misComunicados'])->middleware('auth:sanctum');
+Route::get('/v1/comunicados/mis-comunicados', [ComunicadoController::class, 'misComunicados'])->middleware('auth:sanctum');
 

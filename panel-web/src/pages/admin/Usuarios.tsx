@@ -367,6 +367,14 @@ export function Usuarios() {
     return matchSearch && matchRole;
   });
 
+  // ── Paginación de la tabla ────────────────────────────────────────────────
+  const [paginaActual, setPaginaActual] = useState(1);
+  const usuariosPorPagina    = 10;
+  const indiceUltimoUsuario  = paginaActual * usuariosPorPagina;
+  const indicePrimerUsuario  = indiceUltimoUsuario - usuariosPorPagina;
+  const usuariosPaginados    = filteredUsers.slice(indicePrimerUsuario, indiceUltimoUsuario);
+  const totalPaginas         = Math.ceil(filteredUsers.length / usuariosPorPagina);
+
   const getRoleBadge = (rol: string) => {
     const r = (rol || '').toLowerCase();
     switch (r) {
@@ -638,7 +646,7 @@ export function Usuarios() {
               type="text"
               placeholder="Buscar por nombre, correo o ciudad..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPaginaActual(1); }}
               style={{
                 border: 'none',
                 background: 'transparent',
@@ -670,7 +678,7 @@ export function Usuarios() {
             return (
               <button
                 key={r}
-                onClick={() => setSelectedRole(r)}
+                onClick={() => { setSelectedRole(r); setPaginaActual(1); }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -761,7 +769,7 @@ export function Usuarios() {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user, index) => {
+                usuariosPaginados.map((user, index) => {
                   const roleBadge = getRoleBadge(user.rol);
                   const statusBadge = getStatusBadge(user);
                   const RoleIcon = roleBadge.icon;
@@ -773,7 +781,7 @@ export function Usuarios() {
                     <tr
                       key={userId}
                       style={{
-                        borderBottom: index < filteredUsers.length - 1 ? '1px solid #F3F4F6' : 'none',
+                        borderBottom: index < usuariosPaginados.length - 1 ? '1px solid #F3F4F6' : 'none',
                         transition: 'background 0.15s ease',
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#FAFAFA')}
@@ -999,6 +1007,31 @@ export function Usuarios() {
             </tbody>
           </table>
         </div>
+
+        {/* Controles de Paginación de la Tabla */}
+        {filteredUsers.length > 0 && (
+          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual((prev) => Math.max(prev - 1, 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+                {paginaActual} / {totalPaginas || 1}
+              </div>
+              <button
+                onClick={() => setPaginaActual((prev) => Math.min(prev + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas || totalPaginas === 0}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Modal Emergente de Edición de Usuario ── */}

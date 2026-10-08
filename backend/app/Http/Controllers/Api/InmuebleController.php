@@ -443,7 +443,11 @@ class InmuebleController extends Controller
     {
         $inmueble = Inmueble::findOrFail($id);
 
-        if ($inmueble->id_arrendador !== auth()->id() && (int) $inmueble->id_arrendador !== (int) auth()->id()) {
+        $authUser = $request->user() ?? auth('sanctum')->user();
+        $esAdmin = $authUser && method_exists($authUser, 'esAdministrador') && $authUser->esAdministrador();
+        $esAdmin = $esAdmin || ($authUser && ($authUser->id_rol === 3 || (is_object($authUser->rol) && $authUser->rol->nombre === 'administrador')));
+
+        if ((int) $inmueble->id_arrendador !== (int) auth()->id() && !$esAdmin) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 

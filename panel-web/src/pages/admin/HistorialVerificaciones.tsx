@@ -36,7 +36,14 @@ interface KycHistoryItem {
 export default function HistorialVerificaciones() {
   const [history, setHistory] = useState<KycHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 10;
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPaginaActual(1);
+  };
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -55,20 +62,29 @@ export default function HistorialVerificaciones() {
     fetchHistory();
   }, []);
 
-  const filteredHistory = history.filter(item => {
+  // Lógica de Filtrado
+  const historialFiltrado = history.filter(item => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+
     const arrendadorNombre = item.arrendador?.nombres || item.nombres || '';
     const arrendadorCedula = item.arrendador?.cedula || item.cedula || item.identificacion || '';
     const adminNombre = item.admin?.nombres || item.verified_by_admin?.nombres || '';
-    const obs = item.observaciones || '';
-    const term = search.toLowerCase();
+    const observacion = item.observaciones || '';
 
-    return (
-      arrendadorNombre.toLowerCase().includes(term) ||
-      arrendadorCedula.includes(term) ||
-      adminNombre.toLowerCase().includes(term) ||
-      obs.toLowerCase().includes(term)
-    );
+    const coincideArrendador = arrendadorNombre.toLowerCase().includes(searchLower);
+    const coincideCedula = arrendadorCedula.includes(searchTerm);
+    const coincideObservacion = observacion.toLowerCase().includes(searchLower);
+    const coincideAdmin = adminNombre.toLowerCase().includes(searchLower);
+
+    return coincideArrendador || coincideCedula || coincideObservacion || coincideAdmin;
   });
+
+  // Lógica de Paginación
+  const indiceUltimoItem = paginaActual * itemsPorPagina;
+  const indicePrimerItem = indiceUltimoItem - itemsPorPagina;
+  const historialPaginado = historialFiltrado.slice(indicePrimerItem, indiceUltimoItem);
+  const totalPaginas = Math.ceil(historialFiltrado.length / itemsPorPagina);
 
   const totalAprobados = history.filter(h => (h.accion || h.estado_kyc) === 'aprobado').length;
   const totalRechazados = history.filter(h => (h.accion || h.estado_kyc) === 'rechazado').length;
@@ -158,8 +174,8 @@ export default function HistorialVerificaciones() {
           <input
             type="text"
             placeholder="Buscar por arrendador, cédula u observación..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchTerm}
+            onChange={handleSearchChange}
             style={{
               width: '100%', padding: '10px 10px 10px 38px',
               borderRadius: 10, border: '1px solid #E5E7EB',
@@ -192,14 +208,14 @@ export default function HistorialVerificaciones() {
                     <p style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>Cargando historial de auditoría...</p>
                   </td>
                 </tr>
-              ) : filteredHistory.length === 0 ? (
+              ) : historialFiltrado.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: 48, textAlign: 'center', color: '#6B7280' }}>
                     No hay registros en el historial de verificaciones.
                   </td>
                 </tr>
               ) : (
-                filteredHistory.map((item, index) => {
+                historialPaginado.map((item, index) => {
                   const nombre = item.arrendador?.nombres || item.nombres || 'Arrendador';
                   const cedula = item.arrendador?.cedula || item.cedula || item.identificacion || 'N/A';
                   const adminNombre = item.admin?.nombres || item.verified_by_admin?.nombres || 'Administrador (Sistema)';
@@ -260,6 +276,31 @@ export default function HistorialVerificaciones() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {historialFiltrado.length > 0 && (
+          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl mt-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+                {paginaActual} / {totalPaginas || 1}
+              </div>
+              <button
+                onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas || totalPaginas === 0}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

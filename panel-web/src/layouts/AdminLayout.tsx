@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
   LayoutDashboard,
@@ -23,7 +23,20 @@ const SIDEBAR_BG = '#1E1E2E';
 
 export function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+
+  const handleLogout = () => {
+    // Limpiar todo rastro de la sesión
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('sanctum_token');
+    localStorage.removeItem('uleam_auth_token');
+    sessionStorage.clear();
+
+    // Redirigir al login y evitar volver atrás
+    navigate('/login', { replace: true });
+  };
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [adminUser, setAdminUser] = useState<any>(null);
@@ -148,70 +161,61 @@ export function AdminLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '11px 14px',
-                  borderRadius: 12,
-                  textDecoration: 'none',
-                  background: isActive ? WINE : 'transparent',
-                  color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.65)',
-                  fontWeight: isActive ? 700 : 500,
-                  fontSize: 13,
-                  transition: 'all 0.2s ease',
-                }}
+                className={`flex items-center justify-between px-4 py-3 mb-2 transition-all duration-300 ease-in-out no-underline ${
+                  isActive
+                    ? 'bg-gradient-to-r from-red-800 to-red-700 text-white rounded-lg shadow-lg shadow-red-900/40 border-l-4 border-red-400 font-semibold tracking-wide'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100 rounded-lg font-medium hover:pl-5'
+                }`}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Icon size={18} color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-                  <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <Icon size={18} className={isActive ? 'text-white' : 'text-gray-400'} />
+                  <span className="text-sm">{item.label}</span>
                 </div>
 
-                {item.isVerification ? (
-                  pendingCount > 0 && (
-                    <span
-                      style={{
-                        background: isActive ? 'rgba(255,255,255,0.25)' : '#F59E0B',
-                        color: isActive ? '#FFFFFF' : '#111',
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: '2px 7px',
-                        borderRadius: 10,
-                      }}
-                    >
-                      {pendingCount}
-                    </span>
-                  )
-                ) : item.isDenuncias ? (
-                  pendingReportsCount > 0 && (
-                    <span
-                      style={{
-                        background: isActive ? 'rgba(255,255,255,0.25)' : '#EF4444',
-                        color: '#FFFFFF',
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: '2px 7px',
-                        borderRadius: 10,
-                      }}
-                    >
-                      {pendingReportsCount}
-                    </span>
-                  )
+                {item.isVerification && pendingCount > 0 ? (
+                  <span
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-amber-500 text-gray-900'
+                    }`}
+                  >
+                    {pendingCount}
+                  </span>
+                ) : item.isDenuncias && pendingReportsCount > 0 ? (
+                  <span
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-red-500 text-white'
+                    }`}
+                  >
+                    {pendingReportsCount}
+                  </span>
                 ) : (
-                  isActive && <ChevronRight size={14} color="#FFFFFF" />
+                  isActive && (
+                    <ChevronRight size={18} className="animate-pulse text-red-200" />
+                  )
                 )}
               </NavLink>
             );
           })}
         </nav>
 
-        {/* Footer Admin Status */}
-        <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.15)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981' }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#34D399' }}>Backend API Online</span>
+        {/* Footer Admin Status y Logout */}
+        <div className="mt-auto p-4 border-t border-gray-800">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-gray-400 hover:text-white hover:bg-red-700/80 rounded-lg transition-all duration-200 font-semibold mb-3 group border-0 cursor-pointer"
+          >
+            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+            <span>Cerrar Sesión</span>
+          </button>
+
+          {/* Indicador de Backend API Online */}
+          <div className="flex items-center justify-between px-2 pt-1 border-t border-white/5">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10B981]"></span>
+              <span className="text-[11px] font-medium text-emerald-400">Backend Online</span>
+            </div>
+            <span className="text-[10px] text-gray-500 font-medium">Laravel 11</span>
           </div>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Laravel 11 + PostgreSQL</span>
         </div>
       </aside>
 
@@ -225,7 +229,7 @@ export function AdminLayout() {
             borderBottom: '1px solid #E5E7EB',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
             padding: '0 32px',
             position: 'sticky',
             top: 0,
@@ -233,36 +237,6 @@ export function AdminLayout() {
           }}
         >
           {/* Input de Búsqueda */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              background: '#F3F4F6',
-              padding: '8px 16px',
-              borderRadius: 12,
-              width: 380,
-              border: '1px solid #E5E7EB',
-            }}
-          >
-            <Search size={16} color="#6B7280" />
-            <input
-              type="text"
-              placeholder="Buscar por usuario, cédula, propiedad..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                outline: 'none',
-                fontSize: 13,
-                color: '#111827',
-                width: '100%',
-                fontFamily: 'inherit',
-              }}
-            />
-          </div>
-
           {/* Acciones Derecha (Perfil Superadmin) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             {/* Divisor */}

@@ -93,6 +93,11 @@ export interface PendingProperty {
   estado: string;
   fecha: string;
   direccion: string;
+  sector?: string;
+  referencia?: string;
+  latitud?: number | string | null;
+  longitud?: number | string | null;
+  distancia_uleam_km?: number | null;
   foto_url: string;
   fotos?: { id: number; url: string }[];
   arrendador: {
@@ -179,6 +184,20 @@ export const updatePropertyStatus = async (
     estado: status,
   });
   return res.data;
+};
+
+/**
+ * Eliminar una propiedad desde el panel de administración
+ * DELETE /api/v1/admin/inmuebles/{id} o /api/v1/inmuebles/{id}
+ */
+export const deleteProperty = async (id: number | string) => {
+  try {
+    const res = await api.delete(`/admin/inmuebles/${id}`);
+    return res.data;
+  } catch {
+    const res = await api.delete(`/inmuebles/${id}`);
+    return res.data;
+  }
 };
 
 export interface VerificationDocument {

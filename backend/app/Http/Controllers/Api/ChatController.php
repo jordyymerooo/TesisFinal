@@ -157,4 +157,22 @@ class ChatController extends Controller
 
         return response()->json($formatted);
     }
+
+    /**
+     * GET /api/v1/chats/unread-count
+     * Cuenta todos los mensajes donde el usuario autenticado sea el receptor y no hayan sido leídos.
+     */
+    public function getUnreadCount(Request $request): JsonResponse
+    {
+        $userId = $request->user()->id_usuario;
+
+        $count = Mensaje::where('id_destinatario', $userId)
+            ->where('leido', false)
+            ->count();
+
+        return response()->json([
+            'unread_count' => $count,
+            'count'        => $count,
+        ]);
+    }
 }

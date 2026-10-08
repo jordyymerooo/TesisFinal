@@ -17,35 +17,78 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
-        // Se valida el rol antes para usarlo en la regla condicional
-        $idRol = (int) $request->input('id_rol');
+        // Se valida el rol antes para usarlo en la regla condicional (1 = estudiante, 2 = arrendador)
+        $idRol = (int) $request->input('id_rol', 1);
 
-        $correoRules = ['required', 'email', 'max:150', 'unique:users,correo'];
-        if ($idRol === 1) {
-            $correoRules[] = 'regex:/^[a-zA-Z0-9._%+-]+@(live\.uleam\.edu\.ec|dn\.uleam\.edu\.ec|uleam\.edu\.ec)$/i';
+        // Normalización de parámetros (cedula <-> identificacion, password <-> clave)
+        if ($request->filled('identificacion') && !$request->filled('cedula')) {
+            $request->merge(['cedula' => $request->input('identificacion')]);
+        } elseif ($request->filled('cedula') && !$request->filled('identificacion')) {
+            $request->merge(['identificacion' => $request->input('cedula')]);
         }
 
+        if ($request->filled('clave') && !$request->filled('password')) {
+            $request->merge([
+                'password' => $request->input('clave'),
+                'password_confirmation' => $request->input('clave_confirmation') ?? $request->input('confirmar'),
+            ]);
+        } elseif ($request->filled('password') && !$request->filled('clave')) {
+            $request->merge([
+                'clave' => $request->input('password'),
+                'clave_confirmation' => $request->input('password_confirmation'),
+            ]);
+        }
+
+        $correoValidation = [
+            'required',
+            'email',
+            'max:150',
+            'unique:users,correo',
+            function ($attribute, $value, $fail) use ($idRol) {
+                // Validación de dominio institucional exclusivo para estudiantes
+                if ($idRol === 1 && !preg_match('/@(uleam\.edu\.ec|live\.uleam\.edu\.ec|dn\.uleam\.edu\.ec)$/i', $value)) {
+                    $fail('El correo debe ser institucional de la ULEAM (@uleam.edu.ec, @live.uleam.edu.ec o @dn.uleam.edu.ec).');
+                }
+            },
+        ];
+
         $data = $request->validate([
-            'nombres'        => ['required', 'string', 'max:150'],
-            'correo'         => $correoRules,
-            'clave'          => ['required', 'confirmed', Password::min(8)],
-            'id_rol'         => ['required', 'integer', 'in:1,2'], // solo estudiante o arrendador
-            'identificacion' => ['nullable', 'string', 'max:20'],
-            'cedula'         => ['nullable', 'string', 'max:20'],
-            'telefono'       => ['nullable', 'string', 'max:20'],
+            'nombres'  => ['required', 'string', 'min:3', 'max:50', 'regex:/^[\pL\s\-]+$/u'], // Solo letras y espacios
+            'cedula'   => ['required', 'string', 'size:10', 'regex:/^[0-9]+$/', 'unique:perfiles,identificacion'], 
+            'telefono' => ['required', 'string', 'size:10', 'regex:/^09[0-9]{8}$/'],
+            'correo'   => $correoValidation,
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'id_rol'   => ['required', 'integer', 'in:1,2'],
         ], [
-            'correo.regex' => 'Debes utilizar un correo institucional de la ULEAM.'
+            'nombres.required' => 'El nombre completo es obligatorio.',
+            'nombres.min' => 'El nombre debe tener al menos 3 caracteres.',
+            'nombres.max' => 'El nombre no puede tener más de 50 caracteres.',
+            'nombres.regex' => 'El nombre no puede contener números ni caracteres especiales.',
+            'cedula.required' => 'La cédula es obligatoria.',
+            'cedula.size' => 'La cédula debe tener exactamente 10 dígitos.',
+            'cedula.regex' => 'La cédula solo puede contener números.',
+            'cedula.unique' => 'Esta cédula ya se encuentra registrada.',
+            'telefono.required' => 'El número de teléfono es obligatorio.',
+            'telefono.size' => 'El teléfono debe tener exactamente 10 dígitos.',
+            'telefono.regex' => 'El teléfono debe tener 10 dígitos y empezar por 09 (ej. 0991234567).',
+            'correo.required' => 'El correo electrónico es obligatorio.',
+            'correo.email' => 'El correo electrónico no es válido.',
+            'correo.unique' => 'Este correo ya se encuentra registrado.',
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.min' => 'La contraseña debe tener al menos 8 caracteres.',
+            'password.confirmed' => 'La contraseña y la confirmación no coinciden.',
         ]);
 
-        $cedula = $request->input('cedula') ?: $request->input('identificacion');
-        $telefono = $request->input('telefono');
+        $cedula = $data['cedula'];
+        $telefono = $data['telefono'];
+        $password = $data['password'];
 
         $isArrendador = ((int) $data['id_rol'] === 2);
 
         $user = User::create([
             'nombres'    => $data['nombres'],
             'correo'     => $data['correo'],
-            'clave_hash' => Hash::make($data['clave']),
+            'clave_hash' => Hash::make($password),
             'id_rol'     => $data['id_rol'],
             'estado'     => 'pendiente',
             'estado_kyc' => $isArrendador ? 'pendiente' : null,
@@ -59,7 +102,7 @@ class AuthController extends Controller
             'telefono'       => $telefono,
         ];
 
-        if ((int) $data['id_rol'] === 2) {
+        if ($isArrendador) {
             // Arrendadores inician con documento_verificado = false (requiere aprobación admin)
             $perfilData['documento_verificado'] = false;
         }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -62,8 +62,15 @@ export function HistorialAprobaciones() {
   const navigate = useNavigate();
   const [data, setData] = useState<ApprovedProperty[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 10;
   const [total, setTotal] = useState(0);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPaginaActual(1);
+  };
 
   const fetchHistorial = async () => {
     setLoading(true);
@@ -81,15 +88,21 @@ export function HistorialAprobaciones() {
 
   useEffect(() => { fetchHistorial(); }, []);
 
-  const filtered = data.filter((p) => {
-    const q = search.toLowerCase();
+  const historialFiltrado = data.filter((item) => {
+    const searchLower = searchTerm.toLowerCase();
     return (
-      p.titulo?.toLowerCase().includes(q) ||
-      p.arrendador?.nombres?.toLowerCase().includes(q) ||
-      p.aprobador?.nombres?.toLowerCase().includes(q) ||
-      String(p.id_inmueble).includes(q)
+      !searchTerm ||
+      item.titulo?.toLowerCase().includes(searchLower) ||
+      item.arrendador?.nombres?.toLowerCase().includes(searchLower) ||
+      item.aprobador?.nombres?.toLowerCase().includes(searchLower) ||
+      String(item.id_inmueble).includes(searchLower)
     );
   });
+
+  const indiceUltimoItem = paginaActual * itemsPorPagina;
+  const indicePrimerItem = indiceUltimoItem - itemsPorPagina;
+  const historialPaginado = historialFiltrado.slice(indicePrimerItem, indiceUltimoItem);
+  const totalPaginas = Math.ceil(historialFiltrado.length / itemsPorPagina);
 
   const th = (label: string) => (
     <th key={label} style={{ padding: '14px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -127,7 +140,13 @@ export function HistorialAprobaciones() {
 
       <div style={{ background: '#FFFFFF', borderRadius: 14, padding: '14px 18px', border: '1px solid #E5E7EB', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
         <Search size={16} color="#9CA3AF" />
-        <input type="text" placeholder="Buscar por propiedad, arrendador o administrador..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ border: 'none', outline: 'none', fontSize: 13, color: '#111827', width: '100%', background: 'transparent', fontFamily: 'inherit' }} />
+        <input
+          type="text"
+          placeholder="Buscar por propiedad, arrendador o administrador..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+          style={{ border: 'none', outline: 'none', fontSize: 13, color: '#111827', width: '100%', background: 'transparent', fontFamily: 'inherit' }}
+        />
       </div>
 
       <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
@@ -136,12 +155,12 @@ export function HistorialAprobaciones() {
             <Loader2 size={30} color={WINE} style={{ animation: 'spin 1s linear infinite' }} />
             <span style={{ fontSize: 13, color: '#6B7280', fontWeight: 600 }}>Cargando historial...</span>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : historialFiltrado.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 16 }}>
             <ClipboardList size={44} color="#E5E7EB" />
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>{search ? 'Sin resultados' : 'Aún no hay propiedades aprobadas'}</div>
-              <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>{search ? 'Intenta con otro término.' : 'Cuando apruebes propiedades, aparecerán aquí.'}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>{searchTerm ? 'Sin resultados' : 'Aún no hay propiedades aprobadas'}</div>
+              <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>{searchTerm ? 'Intenta con otro término.' : 'Cuando apruebes propiedades, aparecerán aquí.'}</div>
             </div>
           </div>
         ) : (
@@ -152,11 +171,11 @@ export function HistorialAprobaciones() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p, idx) => {
+              {historialPaginado.map((p, idx) => {
                 const foto = p.fotografias?.[0]?.url;
                 const ubicacion = p.ubicacion ? `${p.ubicacion.sector ? p.ubicacion.sector + ', ' : ''}${p.ubicacion.direccion_referencial || 'Manta'}` : 'Manta';
                 return (
-                  <tr key={p.id_inmueble} style={{ borderBottom: idx < filtered.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+                  <tr key={p.id_inmueble} style={{ borderBottom: idx < historialPaginado.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
                     <td style={{ padding: '16px 20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         {foto ? (
@@ -219,6 +238,31 @@ export function HistorialAprobaciones() {
               })}
             </tbody>
           </table>
+        )}
+
+        {/* Footer de Paginación */}
+        {historialFiltrado.length > 0 && (
+          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+                {paginaActual} / {totalPaginas || 1}
+              </div>
+              <button
+                onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas || totalPaginas === 0}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
         )}
       </div>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

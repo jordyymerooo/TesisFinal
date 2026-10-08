@@ -56,8 +56,21 @@ export interface ReporteItem {
 export function Denuncias() {
   const [reportes, setReportes] = useState<ReporteItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterEstado, setFilterEstado] = useState<'todos' | 'pendiente' | 'resuelto' | 'descartado'>('todos');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('Todos'); // 'Todos', 'Pendientes', 'Resueltos', 'Descartados'
+  const [paginaActual, setPaginaActual] = useState(1);
+  const denunciasPorPagina = 10;
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPaginaActual(1);
+  };
+
+  const handleFiltroChange = (estado: string) => {
+    setFiltroEstado(estado);
+    setPaginaActual(1);
+  };
+
   const [selectedReporte, setSelectedReporte] = useState<ReporteItem | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -105,31 +118,42 @@ export function Denuncias() {
     }
   };
 
-  // Filtrado reactivo
-  const filteredReportes = reportes.filter((r) => {
-    const matchesEstado = filterEstado === 'todos' || r.estado === filterEstado;
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return matchesEstado;
+  // Lógica de Filtrado y Paginación
+  const denunciasFiltradas = reportes.filter((denuncia) => {
+    // 1. Filtro por texto (Buscador)
+    const searchLower = searchTerm.toLowerCase().trim();
+    const estudiante = denuncia.estudiante?.nombres?.toLowerCase() || '';
+    const estudianteCorreo = denuncia.estudiante?.correo?.toLowerCase() || '';
+    const arrendador = denuncia.arrendador?.nombres?.toLowerCase() || '';
+    const arrendadorCorreo = denuncia.arrendador?.correo?.toLowerCase() || '';
+    const inmueble = denuncia.inmueble?.titulo?.toLowerCase() || '';
+    const motivo = denuncia.motivo?.toLowerCase() || '';
+    const desc = denuncia.descripcion?.toLowerCase() || '';
 
-    const estudiante = r.estudiante?.nombres?.toLowerCase() || '';
-    const estudianteCorreo = r.estudiante?.correo?.toLowerCase() || '';
-    const arrendador = r.arrendador?.nombres?.toLowerCase() || '';
-    const arrendadorCorreo = r.arrendador?.correo?.toLowerCase() || '';
-    const inmueble = r.inmueble?.titulo?.toLowerCase() || '';
-    const motivo = r.motivo?.toLowerCase() || '';
-    const desc = r.descripcion?.toLowerCase() || '';
+    const coincideTexto =
+      !searchTerm ||
+      estudiante.includes(searchLower) ||
+      estudianteCorreo.includes(searchLower) ||
+      arrendador.includes(searchLower) ||
+      arrendadorCorreo.includes(searchLower) ||
+      inmueble.includes(searchLower) ||
+      motivo.includes(searchLower) ||
+      desc.includes(searchLower);
 
-    const matchesSearch =
-      estudiante.includes(query) ||
-      estudianteCorreo.includes(query) ||
-      arrendador.includes(query) ||
-      arrendadorCorreo.includes(query) ||
-      inmueble.includes(query) ||
-      motivo.includes(query) ||
-      desc.includes(query);
+    // 2. Filtro por Estado (Botones)
+    // Compara el estado quitando la 's' final si tu BD lo guarda en singular (ej. 'Pendiente' vs 'Pendientes')
+    const coincideEstado =
+      filtroEstado === 'Todos' ||
+      denuncia.estado?.toLowerCase() === filtroEstado.toLowerCase().replace(/s$/, '');
 
-    return matchesEstado && matchesSearch;
+    return coincideTexto && coincideEstado;
   });
+
+  // Paginación sobre las denuncias filtradas
+  const indiceUltimaDenuncia = paginaActual * denunciasPorPagina;
+  const indicePrimeraDenuncia = indiceUltimaDenuncia - denunciasPorPagina;
+  const denunciasPaginadas = denunciasFiltradas.slice(indicePrimeraDenuncia, indiceUltimaDenuncia);
+  const totalPaginas = Math.ceil(denunciasFiltradas.length / denunciasPorPagina);
 
   const pendientesCount = reportes.filter((r) => r.estado === 'pendiente').length;
   const resueltosCount = reportes.filter((r) => r.estado === 'resuelto').length;
@@ -335,8 +359,8 @@ export function Denuncias() {
           <input
             type="text"
             placeholder="Buscar por estudiante, arrendador o inmueble..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchTerm}
+            onChange={handleSearchChange}
             style={{
               border: 'none',
               background: 'transparent',
@@ -346,9 +370,12 @@ export function Denuncias() {
               color: '#111827',
             }}
           />
-          {searchQuery && (
+          {searchTerm && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchTerm('');
+                setPaginaActual(1);
+              }}
               style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9CA3AF' }}
             >
               <X size={14} />
@@ -358,18 +385,12 @@ export function Denuncias() {
 
         {/* Botones de Filtro por Estado */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {(['todos', 'pendiente', 'resuelto', 'descartado'] as const).map((est) => {
-            const isActive = filterEstado === est;
-            const labels = {
-              todos: 'Todos',
-              pendiente: 'Pendientes',
-              resuelto: 'Resueltos',
-              descartado: 'Descartados',
-            };
+          {(['Todos', 'Pendientes', 'Resueltos', 'Descartados'] as const).map((estado) => {
+            const isActive = filtroEstado === estado;
             return (
               <button
-                key={est}
-                onClick={() => setFilterEstado(est)}
+                key={estado}
+                onClick={() => handleFiltroChange(estado)}
                 style={{
                   padding: '7px 14px',
                   borderRadius: 8,
@@ -380,10 +401,9 @@ export function Denuncias() {
                   background: isActive ? WINE : '#F9FAFB',
                   color: isActive ? '#FFFFFF' : '#4B5563',
                   transition: 'all 0.15s ease',
-                  textTransform: 'capitalize',
                 }}
               >
-                {labels[est]}
+                {estado}
               </button>
             );
           })}
@@ -422,22 +442,22 @@ export function Denuncias() {
                     </div>
                   </td>
                 </tr>
-              ) : filteredReportes.length === 0 ? (
+              ) : denunciasFiltradas.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: 48, textAlign: 'center', color: '#6B7280' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                       <CheckCircle2 size={32} color="#10B981" />
                       <p style={{ margin: 0, fontWeight: 700, color: '#111827' }}>
-                        No hay reportes {filterEstado !== 'todos' ? `con estado "${filterEstado}"` : ''}
+                        No hay reportes {filtroEstado !== 'Todos' ? `con estado "${filtroEstado}"` : ''}
                       </p>
                       <span style={{ fontSize: 12, color: '#6B7280' }}>
-                        {searchQuery ? 'Prueba cambiando los criterios de búsqueda.' : 'La plataforma no cuenta con denuncias pendientes en este momento.'}
+                        {searchTerm ? 'Prueba cambiando los criterios de búsqueda.' : 'La plataforma no cuenta con denuncias pendientes en este momento.'}
                       </span>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredReportes.map((reporte) => {
+                denunciasPaginadas.map((reporte) => {
                   const isUpdating = updatingId === reporte.id;
 
                   return (
@@ -719,6 +739,31 @@ export function Denuncias() {
             </tbody>
           </table>
         </div>
+
+        {/* Controles de Paginación */}
+        {denunciasFiltradas.length > 0 && (
+          <div className="flex items-center justify-end px-6 py-4 bg-white border-t border-gray-100 rounded-b-xl">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <div className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-lg border border-gray-100">
+                {paginaActual} / {totalPaginas || 1}
+              </div>
+              <button
+                onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas || totalPaginas === 0}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Modal de Detalle Completo de la Denuncia ── */}

@@ -17,7 +17,7 @@ class Inmueble extends Model
         'normas', 'aprobado_por', 'aprobado_en',
     ];
 
-    protected $appends = ['precio_mensual'];
+    protected $appends = ['precio_mensual', 'latitud', 'longitud', 'lat', 'lng'];
 
     protected $casts = [
         'precio' => 'decimal:2',
@@ -25,6 +25,26 @@ class Inmueble extends Model
         'servicios_incluidos' => 'boolean',
         'aprobado_en' => 'datetime',
     ];
+
+    public function getLatitudAttribute()
+    {
+        return $this->ubicacion?->latitud ? (float) $this->ubicacion->latitud : null;
+    }
+
+    public function getLongitudAttribute()
+    {
+        return $this->ubicacion?->longitud ? (float) $this->ubicacion->longitud : null;
+    }
+
+    public function getLatAttribute()
+    {
+        return $this->getLatitudAttribute();
+    }
+
+    public function getLngAttribute()
+    {
+        return $this->getLongitudAttribute();
+    }
 
     public function getPrecioMensualAttribute()
     {
