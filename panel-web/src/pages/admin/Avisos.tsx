@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import {
   Megaphone,
@@ -49,16 +49,83 @@ export function Avisos() {
   const [destinatarios, setDestinatarios] = useState<DestinatarioTipo>('todos_verificados');
   const [usuariosVerificados, setUsuariosVerificados] = useState<UsuarioVerificado[]>([]);
   const [usuariosSeleccionados, setUsuariosSeleccionados] = useState<number[]>([]);
+  const [selectedUsersMap, setSelectedUsersMap] = useState<Map<number, UsuarioVerificado>>(new Map());
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Filtrado en tiempo real por nombres, apellidos o correo
-  const usuariosFiltrados = usuariosVerificados.filter((user) =>
-    (user.nombres || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.apellidos || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 1. Temporizador Debounce de 500ms tras dejar de escribir
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. Consulta al backend limitada a 20 registros según término debounced
+  useEffect(() => {
+    if (destinatarios !== 'especificos') return;
+
+    let isMounted = true;
+    const fetchUsuarios = async () => {
+      setLoadingUsuarios(true);
+      try {
+        const query = debouncedSearchTerm.trim()
+          ? `?search=${encodeURIComponent(debouncedSearchTerm.trim())}`
+          : '';
+        const res = await api.get(`/admin/usuarios-verificados${query}`);
+        const items = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+        if (isMounted) {
+          setUsuariosVerificados(items);
+        }
+      } catch (err) {
+        console.warn('[Avisos] Error al cargar usuarios verificados:', err);
+      } finally {
+        if (isMounted) {
+          setLoadingUsuarios(false);
+        }
+      }
+    };
+
+    fetchUsuarios();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [debouncedSearchTerm, destinatarios]);
+
+  // 3. Manejo de selección: conserva los usuarios marcados en memoria
+  const handleToggleUser = (user: UsuarioVerificado) => {
+    const isChecked = usuariosSeleccionados.includes(user.id_usuario);
+    if (isChecked) {
+      setUsuariosSeleccionados((prev) => prev.filter((id) => id !== user.id_usuario));
+      setSelectedUsersMap((prev) => {
+        const next = new Map(prev);
+        next.delete(user.id_usuario);
+        return next;
+      });
+    } else {
+      setUsuariosSeleccionados((prev) => [...prev, user.id_usuario]);
+      setSelectedUsersMap((prev) => {
+        const next = new Map(prev);
+        next.set(user.id_usuario, user);
+        return next;
+      });
+    }
+  };
+
+  // 4. Lista combinada: usuarios seleccionados (para que no desaparezcan) + 20 resultados de la búsqueda
+  const displayedUsers = useMemo(() => {
+    const map = new Map<number, UsuarioVerificado>();
+    // Primero los usuarios ya seleccionados para que nunca desaparezcan de memoria ni de la vista
+    selectedUsersMap.forEach((u, id) => map.set(id, u));
+    // Luego los resultados devueltos por la API (máximo 20)
+    usuariosVerificados.forEach((u) => map.set(u.id_usuario, u));
+    return Array.from(map.values());
+  }, [selectedUsersMap, usuariosVerificados]);
 
   // Historial de comunicados
   const [comunicados, setComunicados] = useState<ComunicadoItem[]>([]);
@@ -71,21 +138,6 @@ export function Avisos() {
   const indicePrimerAviso = indiceUltimoAviso - avisosPorPagina;
   const avisosPaginados = comunicados.slice(indicePrimerAviso, indiceUltimoAviso);
   const totalPaginas = Math.ceil(comunicados.length / avisosPorPagina);
-
-  // Cargar usuarios verificados al montar
-  useEffect(() => {
-    const fetchUsuarios = async () => {
-      try {
-        const res = await api.get('/admin/usuarios-verificados');
-        if (res.data?.data) {
-          setUsuariosVerificados(res.data.data);
-        }
-      } catch (err) {
-        console.warn('[Avisos] Error al cargar usuarios verificados:', err);
-      }
-    };
-    fetchUsuarios();
-  }, []);
 
   const fetchComunicados = async () => {
     try {
@@ -136,6 +188,7 @@ export function Avisos() {
         setMensaje('');
         setDestinatarios('todos_verificados');
         setUsuariosSeleccionados([]);
+        setSelectedUsersMap(new Map());
         setSearchTerm('');
         setAlert({
           type: 'success',
@@ -281,6 +334,7 @@ export function Avisos() {
                   setDestinatarios(e.target.value as any);
                   if (e.target.value !== 'especificos') {
                     setUsuariosSeleccionados([]);
+                    setSelectedUsersMap(new Map());
                     setSearchTerm('');
                   }
                 }}
@@ -303,43 +357,85 @@ export function Avisos() {
                   <p className="text-xs text-gray-500 m-0 mt-0.5">{usuariosSeleccionados.length} usuario(s) seleccionado(s)</p>
                 </div>
 
-                {/* Barra de Búsqueda */}
+                {/* Barra de Búsqueda con Debounce y Loader */}
                 <div className="relative w-full sm:w-72">
                   <input 
                     type="text" 
                     placeholder="Buscar por nombre o correo..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-colors bg-white"
+                    className="w-full pl-10 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-colors bg-white"
                   />
                   <Search size={18} className="absolute left-3 top-2.5 text-gray-400" />
+                  {loadingUsuarios && (
+                    <Loader2 size={16} className="absolute right-3 top-2.5 text-red-600 animate-spin" />
+                  )}
                 </div>
               </div>
 
-              {/* Lista de Usuarios Expandida en Grid de 2 Columnas */}
+              {/* Usuarios seleccionados actualmente en memoria (Chips) */}
+              {selectedUsersMap.size > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-3 p-2.5 bg-red-50/70 border border-red-100 rounded-lg">
+                  <span className="text-xs font-bold text-red-900 mr-1">Seleccionados ({selectedUsersMap.size}):</span>
+                  {Array.from(selectedUsersMap.values()).map((user) => (
+                    <span
+                      key={user.id_usuario}
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white text-red-900 border border-red-200 shadow-xs"
+                    >
+                      <span className="truncate max-w-[130px]">{user.nombres}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleUser(user)}
+                        className="text-red-400 hover:text-red-700 font-bold ml-0.5 leading-none cursor-pointer border-0 bg-transparent p-0"
+                        title="Desmarcar usuario"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Lista de Usuarios Expandida en Grid de 2 Columnas (Máximo 20 de la búsqueda + seleccionados en memoria) */}
               <div className="max-h-64 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
-                {usuariosFiltrados.length > 0 ? (
-                  usuariosFiltrados.map((user) => (
-                    <label key={user.id_usuario} className="flex items-start gap-3 p-3 bg-white border border-gray-200 hover:border-red-300 hover:bg-red-50/30 rounded-lg cursor-pointer transition-all shadow-sm">
-                      <input 
-                        type="checkbox" 
-                        value={user.id_usuario}
-                        checked={usuariosSeleccionados.includes(user.id_usuario)}
-                        onChange={(e) => {
-                          if (e.target.checked) setUsuariosSeleccionados([...usuariosSeleccionados, user.id_usuario]);
-                          else setUsuariosSeleccionados(usuariosSeleccionados.filter((id) => id !== user.id_usuario));
-                        }}
-                        className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-600 cursor-pointer"
-                      />
-                      <div className="flex flex-col overflow-hidden">
-                        <span className="text-sm font-semibold text-gray-700 truncate">{user.nombres} {user.apellidos || ''}</span>
-                        <span className="text-xs text-gray-500 truncate">{user.email}</span>
-                      </div>
-                    </label>
-                  ))
+                {displayedUsers.length > 0 ? (
+                  displayedUsers.map((user) => {
+                    const isChecked = usuariosSeleccionados.includes(user.id_usuario);
+                    return (
+                      <label
+                        key={user.id_usuario}
+                        className={`flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer transition-all shadow-sm ${
+                          isChecked
+                            ? 'border-red-400 bg-red-50/40 ring-1 ring-red-400'
+                            : 'border-gray-200 hover:border-red-300 hover:bg-red-50/20'
+                        }`}
+                      >
+                        <input 
+                          type="checkbox" 
+                          value={user.id_usuario}
+                          checked={isChecked}
+                          onChange={() => handleToggleUser(user)}
+                          className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-600 cursor-pointer accent-red-600"
+                        />
+                        <div className="flex flex-col overflow-hidden flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-sm font-semibold text-gray-800 truncate">
+                              {user.nombres} {user.apellidos || ''}
+                            </span>
+                            {isChecked && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-800 rounded">
+                                Seleccionado
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500 truncate">{user.email}</span>
+                        </div>
+                      </label>
+                    );
+                  })
                 ) : (
                   <p className="text-sm text-gray-500 italic col-span-full text-center py-6 bg-white rounded-lg border border-dashed border-gray-300 m-0">
-                    No se encontraron usuarios que coincidan con la búsqueda.
+                    {loadingUsuarios ? 'Buscando usuarios...' : 'No se encontraron usuarios que coincidan con la búsqueda.'}
                   </p>
                 )}
               </div>

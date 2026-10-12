@@ -53,6 +53,7 @@ import {
   getCurrentUserRole,
   getCurrentUserIdRol,
   updatePropertyStatus,
+  API_BASE_URL,
 } from '../../services/api';
 import { formatPrice } from '../../utils/formatters';
 
@@ -203,15 +204,30 @@ export function MobileDetailScreen({ route, navigation, onBack }: MobileDetailSc
       ? property.fotografias.map((f: any) => f.url)
       : [FALLBACK_PHOTO];
 
-  // Datos del Arrendador
-  const arrendador = property?.arrendador;
+  // Datos del Arrendador / Propietario
+  const propiedad = property;
+  const arrendador = property?.arrendador || (property as any)?.propietario;
   const perfil = arrendador?.perfil;
   const isVerifiedLandlord =
     Boolean(perfil?.documento_verificado) ||
     Boolean(arrendador?.correo?.includes('@uleam.edu.ec'));
-  const landlordName = arrendador?.nombres || (arrendador?.nombre) || null;
+  const landlordName = arrendador?.nombres || arrendador?.nombre || 'Usuario';
   const landlordPhone = perfil?.telefono || arrendador?.telefono || null;
-  const landlordAvatar = perfil?.foto_perfil_url || arrendador?.foto || null;
+
+  const rawFotoPerfil =
+    arrendador?.foto_perfil ||
+    perfil?.foto_perfil_url ||
+    perfil?.foto_perfil ||
+    arrendador?.foto ||
+    null;
+
+  const avatarUrl = rawFotoPerfil
+    ? (rawFotoPerfil.startsWith('http')
+        ? rawFotoPerfil
+        : `${API_BASE_URL.replace('/api/v1', '')}/storage/${rawFotoPerfil}`)
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(landlordName || 'Usuario')}&background=random&color=fff&size=150`;
+
+  const landlordAvatar = avatarUrl;
 
   // Ubicación y distancia
   const ubicacion = property?.ubicacion;
@@ -246,7 +262,7 @@ export function MobileDetailScreen({ route, navigation, onBack }: MobileDetailSc
               navigation.navigate('ChatRoom', {
                 userId: property.id_arrendador,
                 userName: landlordName,
-                userPhoto: property?.arrendador?.perfil?.foto_url,
+                userPhoto: avatarUrl,
                 userRole: 'Arrendador',
                 propertyTitle: property?.titulo,
                 inmuebleId: property?.id,
@@ -434,13 +450,10 @@ export function MobileDetailScreen({ route, navigation, onBack }: MobileDetailSc
           {/* ── Tarjeta del Arrendador con Verificación ── */}
           <Text style={styles.sectionTitle}>Propietario del Alojamiento</Text>
           <View style={styles.landlordCard}>
-            {landlordAvatar ? (
-              <Image source={{ uri: landlordAvatar }} style={styles.landlordAvatar} />
-            ) : (
-              <View style={[styles.landlordAvatar, { backgroundColor: Colors.WinePrimary, alignItems: 'center', justifyContent: 'center' }]}>
-                <User size={24} color="#fff" />
-              </View>
-            )}
+            <Image 
+              source={{ uri: avatarUrl }} 
+              style={[styles.landlordAvatar, { backgroundColor: '#f0f0f0' }]} 
+            />
 
             <View style={styles.landlordDetails}>
               <View style={styles.landlordNameRow}>

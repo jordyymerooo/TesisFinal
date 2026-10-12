@@ -31,7 +31,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../theme/theme';
-import apiClient, { getProfile, logout, getCurrentUserIdRol, getStudentRequests, clearSession } from '../../services/api';
+import apiClient, { getProfile, logout, getCurrentUserIdRol, getStudentRequests, clearSession, API_BASE_URL } from '../../services/api';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../context/AuthContext';
 
@@ -42,6 +42,7 @@ interface ProfileScreenProps {
 
 export function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
   const { user: authUser, setUser } = useAuth();
+  const currentUser = authUser;
 
   // ── Estados de React para los datos del usuario ──
   const [name, setName] = useState<string>(authUser?.nombres || 'Andrea Soledispa');
@@ -49,13 +50,29 @@ export function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
   const [role, setRole] = useState<string>(authUser?.rol?.nombre || 'Estudiante');
   const [idRol, setIdRol] = useState<number | null>(() => authUser?.id_rol || getCurrentUserIdRol());
   const [isVerified, setIsVerified] = useState<boolean>(true);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+  const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(
     authUser?.perfil?.foto_perfil_url || authUser?.foto_url || authUser?.foto_perfil || null
   );
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
   const [currentRental, setCurrentRental] = useState<any | null>(null);
+
+  // ── Resolución dinámica de la URL del Avatar con Fallback a UI-Avatars ──
+  const rawFotoPerfil =
+    uploadedAvatar ||
+    currentUser?.foto_perfil ||
+    currentUser?.perfil?.foto_perfil_url ||
+    currentUser?.perfil?.foto_perfil ||
+    currentUser?.foto ||
+    null;
+  const userName = name || currentUser?.nombres || currentUser?.nombre || 'Usuario';
+
+  const avatarUrl = rawFotoPerfil
+    ? (rawFotoPerfil.startsWith('http')
+        ? rawFotoPerfil
+        : `${API_BASE_URL.replace('/api/v1', '')}/storage/${rawFotoPerfil}`)
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random&color=fff&size=150`;
 
   // ── Llamada a la API al montar el componente ──
   const fetchUserProfile = async () => {
@@ -85,7 +102,7 @@ export function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
         }
         const fetchedAvatar = user.perfil?.foto_perfil_url || user.foto_url || user.foto_perfil || null;
         if (fetchedAvatar) {
-          setAvatarUrl(fetchedAvatar);
+          setUploadedAvatar(fetchedAvatar);
         }
 
         // Si es estudiante, buscar si tiene un alquiler aceptado (activo)
@@ -160,7 +177,7 @@ export function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
           res.data?.user?.foto_perfil;
 
         if (newUrl) {
-          setAvatarUrl(newUrl);
+          setUploadedAvatar(newUrl);
           const updatedUser = {
             ...(authUser || {}),
             foto_perfil: newUrl,
@@ -322,12 +339,11 @@ export function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
                   <View style={[styles.avatarFallback, { backgroundColor: Colors.WineLight }]}>
                     <ActivityIndicator size="small" color={Colors.WinePrimary} />
                   </View>
-                ) : avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
                 ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
-                  </View>
+                  <Image 
+                    source={{ uri: avatarUrl }} 
+                    style={[styles.profileImage, { backgroundColor: '#f0f0f0' }]} 
+                  />
                 )}
 
                 {/* Badge Flotante de Verificado */}
@@ -672,6 +688,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  profileImage: {
     width: 88,
     height: 88,
     borderRadius: 44,

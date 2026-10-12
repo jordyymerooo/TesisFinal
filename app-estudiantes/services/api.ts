@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -7,10 +7,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Detectada automáticamente desde las variables de entorno de Expo (.env).
  */
 export const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+  process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:8000/api/v1';
 
 export const API_BASE_URL = BASE_URL;
-export const LOCAL_IP = process.env.EXPO_PUBLIC_LOCAL_IP || '127.0.0.1';
+export const LOCAL_IP = process.env.EXPO_PUBLIC_LOCAL_IP || '192.168.1.5';
 export const BACKEND_PORT = process.env.EXPO_PUBLIC_BACKEND_PORT || '8000';
 
 let authToken: string | null = null;
@@ -46,8 +46,10 @@ export const setAuthToken = (token: string | null) => {
   authToken = token;
   if (token) {
     AsyncStorage.setItem('auth_token', token).catch(() => {});
+    AsyncStorage.setItem('session_timestamp', Date.now().toString()).catch(() => {});
   } else {
     AsyncStorage.removeItem('auth_token').catch(() => {});
+    AsyncStorage.removeItem('session_timestamp').catch(() => {});
   }
   authListeners.forEach((fn) => fn(token));
 };
@@ -82,18 +84,36 @@ export const getCurrentUserIdRol = () => currentUserIdRol;
 export const clearSession = () => {
   setAuthToken(null);
   setCurrentUser(null);
-  AsyncStorage.multiRemove(['auth_token', 'user']).catch(() => {});
+  AsyncStorage.multiRemove(['auth_token', 'user', 'session_timestamp']).catch(() => {});
 };
 
 /**
- * Restaura la sesión desde AsyncStorage al iniciar la aplicación móvil
+ * Restaura la sesión desde AsyncStorage al iniciar la aplicación móvil.
+ * Valida si la sesión tiene más de 12 horas para forzar el auto-logout.
  */
 export const restoreSessionFromStorage = async (): Promise<string | null> => {
   try {
     const token = await AsyncStorage.getItem('auth_token');
+    const timestampStr = await AsyncStorage.getItem('session_timestamp');
+
+    // ── Validación de Expiración de Sesión (12 horas = 12 * 60 * 60 * 1000 ms) ──
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+    if (token && timestampStr) {
+      const sessionAge = Date.now() - parseInt(timestampStr, 10);
+      if (sessionAge > TWELVE_HOURS_MS) {
+        console.warn('[Session] La sesión ha expirado (más de 12 horas). Ejecutando auto-logout...');
+        clearSession();
+        return null;
+      }
+    }
+
     const userStr = await AsyncStorage.getItem('user');
     if (token) {
       authToken = token;
+      // Si la sesión no tenía timestamp previo, inicializar con la marca actual
+      if (!timestampStr) {
+        AsyncStorage.setItem('session_timestamp', Date.now().toString()).catch(() => {});
+      }
       if (userStr) {
         try {
           const userObj = JSON.parse(userStr);
@@ -147,14 +167,40 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let lastOfflineAlertTime = 0;
+
 // Interceptor de respuesta para manejo uniforme de errores y logout automático en 401
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 1. Detección de Error de Red / Servidor caído / Timeout
+    if (!error.response) {
+      const now = Date.now();
+      if (now - lastOfflineAlertTime > 2500) {
+        lastOfflineAlertTime = now;
+
+        // Detectar si es un timeout explícito
+        if (error.code === 'ECONNABORTED') {
+          Alert.alert(
+            "Servidor inalcanzable",
+            "El servidor está tardando demasiado en responder. Inténtalo de nuevo más tarde."
+          );
+        } else {
+          Alert.alert(
+            "Error de conexión",
+            "No pudimos conectar con el servidor. Revisa tu internet o verifica si el sistema está en mantenimiento."
+          );
+        }
+      }
+      return Promise.reject(error);
+    }
+
+    // 2. Manejo existente de errores HTTP (Ej: 401 Unauthorized para cerrar sesión)
     if (error.response?.status === 401) {
       console.warn('[API Mobile] Token expirado o no autorizado (401). Limpiando sesión...');
       clearSession();
     }
+
     const message =
       error.response?.data?.message ||
       error.message ||
@@ -178,6 +224,7 @@ export const authService = {
   async login(correo: string, clave: string, expoPushToken?: string | null) {
     const res = await apiClient.post('/auth/login', { correo, clave });
     if (res.data?.token) {
+      AsyncStorage.setItem('session_timestamp', Date.now().toString()).catch(() => {});
       setAuthToken(res.data.token);
     }
     if (res.data?.user) {

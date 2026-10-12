@@ -14,7 +14,7 @@ const getSavedToken = () =>
   localStorage.getItem('sanctum_token');
 
 const REVERB_KEY = import.meta.env.VITE_REVERB_APP_KEY || 'o2jxqqwjvgy5woej1uqv';
-const REVERB_HOST = import.meta.env.VITE_REVERB_HOST || window.location.hostname || '192.168.1.7';
+const REVERB_HOST = import.meta.env.VITE_REVERB_HOST || window.location.hostname || '192.168.1.5';
 const REVERB_PORT = Number(import.meta.env.VITE_REVERB_PORT || 8080);
 const AUTH_URL = `http://${REVERB_HOST}:8000/api/broadcasting/auth`;
 

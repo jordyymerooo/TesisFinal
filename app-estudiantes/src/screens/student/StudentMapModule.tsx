@@ -67,6 +67,7 @@ export function StudentMapModule({
 }) {
   const mapRef        = useRef<MapView | null>(null);
   const bottomSheetRef = useRef<BottomSheet | null>(null);
+  const isFetchingMoreRef = useRef<boolean>(false);
 
   // ── Estado de datos reales ──────────────────────────────────────
   const [properties, setProperties] = useState<MapInmueblePin[]>([]);
@@ -137,57 +138,66 @@ export function StudentMapModule({
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'No se pudo cargar el mapa. Verifica tu conexión.');
+      setHasMore(false);
     } finally {
       setLoadingMap(false);
     }
   }, []);
 
   const handleLoadMore = async () => {
-    if (hasMore && !loadingMore) {
-      setLoadingMore(true);
-      try {
-        const nextPage = page + 1;
-        const res = await getInmuebles(nextPage);
-        const newItems = res?.data ?? [];
-        if (newItems.length > 0) {
-          const adapted: MapInmueblePin[] = newItems.map((i: any) => ({
-            id: i.id_inmueble ?? i.id,
-            titulo: i.titulo,
-            precio: '$' + Number(i.precio).toFixed(2),
-            precio_mensual: Number(i.precio),
-            precio_numero: Number(i.precio),
-            tipo: (i.tipo || '').replace(/_/g, ' '),
-            tipo_raw: i.tipo,
-            capacidad: i.capacidad ?? 1,
-            calificacion: i.calificacion_promedio ?? 4.8,
-            latitud: Number(i.ubicacion?.latitud ?? -0.9555),
-            longitud: Number(i.ubicacion?.longitud ?? -80.7380),
-            distancia: i.ubicacion?.distancia_uleam_km
-              ? `${i.ubicacion.distancia_uleam_km} km de ULEAM`
-              : 'Cerca de ULEAM',
-            direccion: i.ubicacion?.direccion_referencial ?? i.ubicacion?.sector ?? '',
-            portada_url: i.fotografias?.[0]?.url ?? null,
-          }));
-          setProperties((prev) => {
-            const combined = [...prev, ...adapted];
-            return combined.reduce((acc: MapInmueblePin[], current: MapInmueblePin) => {
-              const x = acc.find((item) => item.id === current.id);
-              if (!x) {
-                return acc.concat([current]);
-              }
-              return acc;
-            }, []);
-          });
-          setPage(nextPage);
-          setHasMore((res.current_page ?? nextPage) < (res.last_page ?? 1));
-        } else {
-          setHasMore(false);
-        }
-      } catch (err) {
-        console.warn('[StudentMapModule] Error cargando más inmuebles:', err);
-      } finally {
-        setLoadingMore(false);
+    // GUARD CLAUSE CRÍTICA: Evita el bucle infinito
+    if (loadingMap || loadingMore || !hasMore || isFetchingMoreRef.current) return;
+
+    isFetchingMoreRef.current = true;
+    setLoadingMore(true);
+
+    try {
+      const nextPage = page + 1;
+      const res = await getInmuebles(nextPage);
+      const newItems = res?.data ?? [];
+      if (newItems.length > 0) {
+        const adapted: MapInmueblePin[] = newItems.map((i: any) => ({
+          id: i.id_inmueble ?? i.id,
+          titulo: i.titulo,
+          precio: '$' + Number(i.precio).toFixed(2),
+          precio_mensual: Number(i.precio),
+          precio_numero: Number(i.precio),
+          tipo: (i.tipo || '').replace(/_/g, ' '),
+          tipo_raw: i.tipo,
+          capacidad: i.capacidad ?? 1,
+          calificacion: i.calificacion_promedio ?? 4.8,
+          latitud: Number(i.ubicacion?.latitud ?? -0.9555),
+          longitud: Number(i.ubicacion?.longitud ?? -80.7380),
+          distancia: i.ubicacion?.distancia_uleam_km
+            ? `${i.ubicacion.distancia_uleam_km} km de ULEAM`
+            : 'Cerca de ULEAM',
+          direccion: i.ubicacion?.direccion_referencial ?? i.ubicacion?.sector ?? '',
+          portada_url: i.fotografias?.[0]?.url ?? null,
+        }));
+        setProperties((prev) => {
+          const combined = [...prev, ...adapted];
+          return combined.reduce((acc: MapInmueblePin[], current: MapInmueblePin) => {
+            const x = acc.find((item) => item.id === current.id);
+            if (!x) {
+              return acc.concat([current]);
+            }
+            return acc;
+          }, []);
+        });
+        setPage(nextPage);
+        const currentPage = res.current_page ?? nextPage;
+        const lastPage = res.last_page ?? 1;
+        setHasMore(currentPage < lastPage);
+      } else {
+        setHasMore(false);
       }
+    } catch (err) {
+      console.warn('[StudentMapModule] Error cargando más inmuebles:', err);
+      // Apagar hasMore para que una falla de red no cause un bucle infinito
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+      isFetchingMoreRef.current = false;
     }
   };
 

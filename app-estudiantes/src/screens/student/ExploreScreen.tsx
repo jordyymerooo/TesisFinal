@@ -78,6 +78,7 @@ export function ExploreScreen({ navigation, onSelectProperty, onToggleView }: Ex
       setHasMore(currentPage < lastPage);
     } catch (error) {
       console.error('[ExploreScreen] Error al cargar inmuebles paginados:', error);
+      if (!isRefresh) setHasMore(false);
     } finally {
       setLoadingMore(false);
       setRefreshing(false);
@@ -92,11 +93,10 @@ export function ExploreScreen({ navigation, onSelectProperty, onToggleView }: Ex
   );
 
   const handleLoadMore = () => {
-    if (hasMore && !loadingMore) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchInmueblesData(nextPage);
-    }
+    if (!hasMore || loadingMore || refreshing) return;
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchInmueblesData(nextPage);
   };
 
   const handleRefresh = useCallback(() => {

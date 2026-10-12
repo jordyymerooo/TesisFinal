@@ -805,6 +805,9 @@ export function AppNavigator() {
         if (token) {
           setAuthTokenState(token);
           setOnboardingDone(true);
+        } else {
+          setAuthTokenState(null);
+          setOnboardingDone(false);
         }
         setIsInitializing(false);
       }

@@ -43,17 +43,28 @@ class ComunicadoController extends Controller
      * Obtener lista de usuarios verificados para selección en comunicados.
      * GET /api/v1/admin/usuarios-verificados
      */
-    public function getUsuariosVerificados(): JsonResponse
+    public function getUsuariosVerificados(Request $request): JsonResponse
     {
-        $usuarios = User::where(function ($query) {
-                $query->where('estado_kyc', 'aprobado')
-                      ->orWhere('id_rol', 1) // Estudiantes
-                      ->orWhereHas('perfil', function ($q) {
-                          $q->where('documento_verificado', true);
-                      });
-            })
-            ->select('id_usuario', 'nombres', 'correo', 'id_rol')
+        $query = User::where(function ($q) {
+                $q->where('estado_kyc', 'aprobado')
+                  ->orWhere('id_rol', 1) // Estudiantes
+                  ->orWhereHas('perfil', function ($sub) {
+                      $sub->where('documento_verificado', true);
+                  });
+            });
+
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('nombres', 'LIKE', "%{$search}%")
+                  ->orWhere('correo', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Prevenir colapso enviando solo 20 registros como máximo
+        $usuarios = $query->select('id_usuario', 'nombres', 'correo', 'id_rol')
             ->orderBy('nombres', 'asc')
+            ->take(20)
             ->get()
             ->map(function ($u) {
                 return [
